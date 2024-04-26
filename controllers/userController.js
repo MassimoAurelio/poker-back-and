@@ -67,3 +67,13 @@ exports.updatePositions = async (req, res) => {
     });
   }
 };
+
+exports.mbBB = async (req, res) => {
+  try {
+     await User.updateOne({ position: 1 }, { $inc: { stack: -50 } });
+     await User.updateOne({ position: 2 }, { $inc: { stack: -100 } });
+     res.status(200).json({ message: "Stack values updated successfully" });
+  } catch (error) {
+     res.status(500).json({ message: error.message });
+  }
+ };
