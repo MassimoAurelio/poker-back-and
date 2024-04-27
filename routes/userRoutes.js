@@ -7,4 +7,5 @@ router.post("/leave", userController.leave);
 router.get("/players", userController.getPlayers);
 router.post("/updatepos", userController.updatePositions);
 router.post("/mbbb", userController.mbBB);
+router.post("/start", userController.sequenceOfMoves);
 module.exports = router;

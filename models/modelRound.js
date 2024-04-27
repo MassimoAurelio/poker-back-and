@@ -1,9 +1,9 @@
 const { Timestamp } = require("mongodb");
 const mongoose = require("mongoose");
 
-const UserShema = new mongoose.Schema(
+const RoundShema = new mongoose.Schema(
   {
-    name: {
+    word: {
       type: String,
     },
     stack: {
@@ -12,9 +12,8 @@ const UserShema = new mongoose.Schema(
     position: {
       type: Number,
     },
-    currentPlayerId: {
+    active: {
       type: Boolean,
-      default: false
     },
   },
   {
@@ -22,6 +21,6 @@ const UserShema = new mongoose.Schema(
   }
 );
 
-const User = mongoose.model("User", UserShema);
+const Round = mongoose.model("Round", RoundShema);
 
-module.exports = User;
+module.exports = Round;

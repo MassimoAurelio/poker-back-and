@@ -1,8 +1,9 @@
 const User = require("../models/modelUser");
+const Round = require("../models/modelRound");
 
 //Сесть за стол
 exports.join = async (req, res) => {
-  const { player, position, stack, positions } = req.body;
+  const { player, position, stack, positions, active } = req.body;
   try {
     const existingPlayer = await User.findOne({ name: player });
     if (existingPlayer) {
@@ -15,6 +16,13 @@ exports.join = async (req, res) => {
     }
     const newPlayer = new User({ name: player, position, stack });
     await newPlayer.save();
+
+    if (position === 3) {
+      await User.updateMany(
+        { position: 3 },
+        { $set: { currentPlayerId: true } }
+      );
+    }
     res
       .status(200)
       .json(`Игрок ${player} присоединился к столу на позицию ${position}.`);
@@ -50,14 +58,22 @@ exports.getPlayers = async (req, res) => {
   }
 };
 
+//Обновление позиций
 exports.updatePositions = async (req, res) => {
   try {
     const players = await User.find({});
+
+    await User.updateOne({ position: 3 }, { $set: { currentPlayerId: false } });
 
     for (let player of players) {
       player.position = player.position === 1 ? 6 : player.position - 1;
       await player.save();
     }
+
+    await User.updateOne(
+      { position: 3 },
+      { $set: { currentPlayerId: true } }
+    );
 
     res.status(200).json("Позиции игроков успешно обновлены.");
   } catch (error) {
@@ -68,12 +84,43 @@ exports.updatePositions = async (req, res) => {
   }
 };
 
+//Вычитание малого и большого блаинда у первых двух позиций
 exports.mbBB = async (req, res) => {
   try {
-     await User.updateOne({ position: 1 }, { $inc: { stack: -50 } });
-     await User.updateOne({ position: 2 }, { $inc: { stack: -100 } });
-     res.status(200).json({ message: "Stack values updated successfully" });
+    await User.updateOne({ position: 1 }, { $inc: { stack: -50 } });
+    await User.updateOne({ position: 2 }, { $inc: { stack: -100 } });
+    res.status(200).json({ message: "Stack values updated successfully" });
   } catch (error) {
-     res.status(500).json({ message: error.message });
+    res.status(500).json({ message: error.message });
   }
- };
+};
+
+//Начало раунда торгов с третьей позиции
+exports.sequenceOfMoves = async (req, res) => {
+  try {
+    const updatedUser = await User.findOneAndUpdate(
+      { position: 3 }, // Фильтр для поиска пользователя на третьей позиции
+      { $set: { currentPlayerId: true } }, // Обновление поля currentPlayerId на true
+      { new: true } // Возвращаем обновленный документ
+    );
+    if (!updatedUser) {
+      return res.status(401).json("Игрок не найден");
+    }
+    await updatedUser.save();
+
+    res
+      .status(200)
+      .json({ message: "Торги начинаются с 3 позиции", updatedUser });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// Передача слова следующему игроку
+exports.nextTurnPlayer = async (req, res) => {
+  try {
+    const playerTurn = await User.findOne({ currentPlayerId: true });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
