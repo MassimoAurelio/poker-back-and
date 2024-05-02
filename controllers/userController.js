@@ -3,7 +3,7 @@ const Round = require("../models/modelRound");
 
 // Сесть за стол
 exports.join = async (req, res) => {
-  const { player, position, stack, positions, active } = req.body;
+  const { player, position, stack } = req.body;
   try {
     const existingPlayer = await User.findOne({ name: player });
     if (existingPlayer) {
@@ -98,26 +98,6 @@ exports.mbBB = async (req, res) => {
   }
 };
 
-//Начало раунда торгов с третьей позиции
-exports.sequenceOfMoves = async (req, res) => {
-  try {
-    const updatedUser = await User.findOneAndUpdate(
-      { position: 3 }, // Фильтр для поиска пользователя на третьей позиции
-      { $set: { currentPlayerId: true } }, // Обновление поля currentPlayerId на true
-      { new: true } // Возвращаем обновленный документ
-    );
-    if (!updatedUser) {
-      return res.status(401).json("Игрок не найден");
-    }
-    await updatedUser.save();
-
-    res
-      .status(200)
-      .json({ message: "Торги начинаются с 3 позиции", updatedUser });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
 
 // Передача слова следующему игроку
 exports.nextTurnPlayer = async (req, res) => {
