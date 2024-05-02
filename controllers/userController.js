@@ -1,7 +1,7 @@
 const User = require("../models/modelUser");
 const Round = require("../models/modelRound");
 
-//Сесть за стол
+// Сесть за стол
 exports.join = async (req, res) => {
   const { player, position, stack, positions, active } = req.body;
   try {
@@ -16,6 +16,12 @@ exports.join = async (req, res) => {
     }
     const newPlayer = new User({ name: player, position, stack });
     await newPlayer.save();
+
+    if (position === 1) {
+      await User.updateOne({ _id: newPlayer._id }, { $inc: { stack: -50 } });
+    } else if (position === 2) {
+      await User.updateOne({ _id: newPlayer._id }, { $inc: { stack: -100 } });
+    }
 
     if (position === 3) {
       await User.updateMany(
@@ -70,10 +76,7 @@ exports.updatePositions = async (req, res) => {
       await player.save();
     }
 
-    await User.updateOne(
-      { position: 3 },
-      { $set: { currentPlayerId: true } }
-    );
+    await User.updateOne({ position: 3 }, { $set: { currentPlayerId: true } });
 
     res.status(200).json("Позиции игроков успешно обновлены.");
   } catch (error) {
