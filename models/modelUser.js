@@ -15,7 +15,7 @@ const UserShema = new mongoose.Schema(
     currentPlayerId: {
       type: Boolean,
       default: false
-    },
+    }
   },
   {
     timestamps: true,
