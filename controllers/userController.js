@@ -98,11 +98,46 @@ exports.mbBB = async (req, res) => {
   }
 };
 
-
 // Передача слова следующему игроку
 exports.nextTurnPlayer = async (req, res) => {
   try {
-    const playerTurn = await User.findOne({ currentPlayerId: true });
+    // Шаг 1: Найти текущего игрока
+    const currentTurn = await User.findOne({ currentPlayerId: true });
+
+    if (!currentTurn) {
+      return res.status(404).json({ message: "Текущий игрок не найден" });
+    }
+
+    // Шаг 2: Снять currentPlayerId с текущего игрока
+    await User.updateOne({ _id: currentTurn._id }, { currentPlayerId: false });
+
+    // Шаг 3: Найти следующего игрока
+    let nextTurn;
+
+    // Проверяем, находится ли текущий игрок на последней позиции
+    if (currentTurn.position === 6) {
+      // Если текущий игрок на последней позиции, переходим к первому игроку
+      nextTurn = await User.findOne({ position: 1, currentPlayerId: false });
+    } else {
+      // Иначе ищем следующего игрока с позицией больше текущей
+      nextTurn = await User.findOne({
+        position: { $gt: currentTurn.position },
+        currentPlayerId: false,
+      });
+    }
+
+    if (!nextTurn) {
+      return res.status(404).json({ message: "Следующий игрок не найден" });
+    }
+
+    // Шаг 4: Установить следующему игроку currentPlayerId: true
+    await User.updateOne({ _id: nextTurn._id }, { currentPlayerId: true });
+
+    // Шаг 5: Отправить ответ
+    res.json({
+      message: `Ход передан следующему игроку ${currentTurn.name}`,
+      nextPlayer: nextTurn,
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
