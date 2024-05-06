@@ -98,6 +98,52 @@ exports.mbBB = async (req, res) => {
   }
 };
 
+//Поднимаем ставку
+exports.raise = async (req, res) => {
+  try {
+    const { name, raiseAmount } = req.body;
+
+    const player = await User.findOne({ name });
+
+    if (!player) {
+      return res.status(404).json(`Игрок ${name} не найден`);
+    }
+
+    if (player.stack < raiseAmount) {
+      return res
+        .status(400)
+        .json({ message: "Недостаточно средств для рейза" });
+    }
+
+    await User.updateOne({ name }, { $inc: { stack: -raiseAmount } });
+
+    res.status(200).json({ message: "Ставка рейза успешно выполнена" });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+//Сбрасываем карты
+exports.fold = async (req, res) => {
+  try {
+    const { name } = req.body;
+
+    // Находим игрока по имени
+    const player = await User.findOne({ name });
+
+    if (!player) {
+      return res.status(404).json({ message: "Игрок не найден" });
+    }
+
+    // Устанавливаем поле fold игрока в true
+    await User.updateOne({ _id: player._id }, { fold: true });
+
+    res.status(200).json({ message: `Игрок ${name} пропустил ход` });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 // Передача слова следующему игроку
 exports.nextTurnPlayer = async (req, res) => {
   try {
@@ -117,12 +163,19 @@ exports.nextTurnPlayer = async (req, res) => {
     // Проверяем, находится ли текущий игрок на последней позиции
     if (currentTurn.position === 6) {
       // Если текущий игрок на последней позиции, переходим к первому игроку
-      nextTurn = await User.findOne({ position: 1, currentPlayerId: false });
+      nextTurn = await User.findOne({
+        position: 1,
+        currentPlayerId: false,
+        fold: false,
+      });
+
+      res.status(200).json("OK");
     } else {
       // Иначе ищем следующего игрока с позицией больше текущей
       nextTurn = await User.findOne({
         position: { $gt: currentTurn.position },
         currentPlayerId: false,
+        fold: false,
       });
     }
 
@@ -142,5 +195,3 @@ exports.nextTurnPlayer = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
-
-

@@ -14,8 +14,12 @@ const UserShema = new mongoose.Schema(
     },
     currentPlayerId: {
       type: Boolean,
-      default: false
-    }
+      default: false,
+    },
+    fold: {
+      type: Boolean,
+      default: false,
+    },
   },
   {
     timestamps: true,
