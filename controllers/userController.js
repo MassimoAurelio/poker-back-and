@@ -18,20 +18,15 @@ exports.join = async (req, res) => {
     await newPlayer.save();
 
     if (position === 1) {
-      
       await User.updateOne(
         { _id: newPlayer._id },
-        { $inc: { stack: -25 }, $set: { lastBet: 25 } } 
+        { $inc: { stack: -25 }, $set: { lastBet: 25 } }
       );
-      const updatedPlayer = await User.findById(newPlayer._id);
-      
     } else if (position === 2) {
-     
       await User.updateOne(
         { _id: newPlayer._id },
-        { $inc: { stack: -50 }, $set: { lastBet: 50 } } 
+        { $inc: { stack: -50 }, $set: { lastBet: 50 } }
       );
-      const updatedPlayer = await User.findById(newPlayer._id);
     }
 
     if (position === 3) {
@@ -135,7 +130,10 @@ exports.raise = async (req, res) => {
         .json({ message: "Недостаточно средств для рейза" });
     }
 
-    await User.updateOne({ name }, { $inc: { stack: -raiseAmount } });
+    await User.updateOne(
+      { name },
+      { $inc: { stack: -raiseAmount }, $set: { lastBet: raiseAmount } }
+    );
 
     res.status(200).json({ message: "Ставка рейза успешно выполнена" });
   } catch (error) {
@@ -164,10 +162,39 @@ exports.fold = async (req, res) => {
   }
 };
 
-//Колируем самую большую ставку
 exports.coll = async (req, res) => {
   try {
-    const lastBigBet = await User.findOne({ lastBet: -1 });
+    const { name } = req.body;
+    // Находим пользователя по имени
+    const player = await User.findOne({ name });
+
+    if (!player) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Находим пользователя с максимальным значением lastBet
+    const lastBigBetUser = await User.findOne({}).sort({ lastBet: -1 });
+
+    if (!lastBigBetUser) {
+      return res.status(404).json({ message: "No big bet found" });
+    }
+
+    // Проверяем, достаточно ли у текущего пользователя средств для коллирования
+    if (player.stack < lastBigBetUser.lastBet) {
+      return res
+        .status(400)
+        .json({ message: "Not enough stack to cover the bet" });
+    }
+    // Обновляем текущего пользователя
+    await User.updateOne(
+      { _id: player._id }, // Используем _id для уникального обновления
+      {
+        $inc: { stack: -lastBigBetUser.lastBet },
+        $set: { lastBet: lastBigBetUser.lastBet },
+      }
+    );
+
+    res.status(200).json("OK");
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
