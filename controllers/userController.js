@@ -18,9 +18,9 @@ exports.join = async (req, res) => {
     await newPlayer.save();
 
     if (position === 1) {
-      await User.updateOne({ _id: newPlayer._id }, { $inc: { stack: -50 } });
+      await User.updateOne({ _id: newPlayer._id }, { $inc: { stack: -25 } });
     } else if (position === 2) {
-      await User.updateOne({ _id: newPlayer._id }, { $inc: { stack: -100 } });
+      await User.updateOne({ _id: newPlayer._id }, { $inc: { stack: -50 } });
     }
 
     if (position === 3) {
@@ -64,10 +64,10 @@ exports.getPlayers = async (req, res) => {
   }
 };
 
-//Обновление позиций
+// Обновление позиций
 exports.updatePositions = async (req, res) => {
   try {
-    const players = await User.find({});
+    const players = await User.find({ fold: false });
 
     await User.updateOne({ position: 3 }, { $set: { currentPlayerId: false } });
 
@@ -144,7 +144,6 @@ exports.fold = async (req, res) => {
   }
 };
 
-// Передача слова следующему игроку
 exports.nextTurnPlayer = async (req, res) => {
   try {
     // Шаг 1: Найти текущего игрока
@@ -168,8 +167,6 @@ exports.nextTurnPlayer = async (req, res) => {
         currentPlayerId: false,
         fold: false,
       });
-
-      res.status(200).json("OK");
     } else {
       // Иначе ищем следующего игрока с позицией больше текущей
       nextTurn = await User.findOne({
@@ -187,7 +184,7 @@ exports.nextTurnPlayer = async (req, res) => {
     await User.updateOne({ _id: nextTurn._id }, { currentPlayerId: true });
 
     // Шаг 5: Отправить ответ
-    res.json({
+    res.status(200).json({
       message: `Ход передан следующему игроку ${currentTurn.name}`,
       nextPlayer: nextTurn,
     });
