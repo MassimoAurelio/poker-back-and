@@ -10,4 +10,5 @@ router.post("/mbbb", userController.mbBB);
 router.post("/nextplayer", userController.nextTurnPlayer);
 router.post("/raise", userController.raise);
 router.post("/fold", userController.fold);
+router.post("/coll", userController.coll);
 module.exports = router;

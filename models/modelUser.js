@@ -20,6 +20,10 @@ const UserShema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    lastBet: {
+      type: Number,
+      default: 0,
+    },
   },
   {
     timestamps: true,

@@ -1,5 +1,4 @@
 const User = require("../models/modelUser");
-const Round = require("../models/modelRound");
 
 // Сесть за стол
 exports.join = async (req, res) => {
@@ -14,13 +13,25 @@ exports.join = async (req, res) => {
     if (positionPlayer) {
       return res.status(400).json("Это место на столе уже занято");
     }
+
     const newPlayer = new User({ name: player, position, stack });
     await newPlayer.save();
 
     if (position === 1) {
-      await User.updateOne({ _id: newPlayer._id }, { $inc: { stack: -25 } });
+      
+      await User.updateOne(
+        { _id: newPlayer._id },
+        { $inc: { stack: -25 }, $set: { lastBet: 25 } } 
+      );
+      const updatedPlayer = await User.findById(newPlayer._id);
+      
     } else if (position === 2) {
-      await User.updateOne({ _id: newPlayer._id }, { $inc: { stack: -50 } });
+     
+      await User.updateOne(
+        { _id: newPlayer._id },
+        { $inc: { stack: -50 }, $set: { lastBet: 50 } } 
+      );
+      const updatedPlayer = await User.findById(newPlayer._id);
     }
 
     if (position === 3) {
@@ -29,6 +40,7 @@ exports.join = async (req, res) => {
         { $set: { currentPlayerId: true } }
       );
     }
+
     res
       .status(200)
       .json(`Игрок ${player} присоединился к столу на позицию ${position}.`);
@@ -54,7 +66,6 @@ exports.leave = async (req, res) => {
 exports.getPlayers = async (req, res) => {
   try {
     const players = await User.find({});
-
     res.status(200).json(players);
   } catch (error) {
     res.status(500).json({
@@ -90,9 +101,18 @@ exports.updatePositions = async (req, res) => {
 //Вычитание малого и большого блаинда у первых двух позиций
 exports.mbBB = async (req, res) => {
   try {
-    await User.updateOne({ position: 1 }, { $inc: { stack: -50 } });
-    await User.updateOne({ position: 2 }, { $inc: { stack: -100 } });
-    res.status(200).json({ message: "Stack values updated successfully" });
+    const mbBet = await User.updateOne(
+      { position: 1 },
+      { $inc: { stack: -25 } }
+    );
+    const bBBet = await User.updateOne(
+      { position: 2 },
+      { $inc: { stack: -50 } }
+    );
+
+    res.status(200).json({
+      message: `Малый ${mbBet.stack} и большой блаинд ${bBBet.stack} высчитались из первой и второй позиции`,
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -139,6 +159,15 @@ exports.fold = async (req, res) => {
     await User.updateOne({ _id: player._id }, { fold: true });
 
     res.status(200).json({ message: `Игрок ${name} пропустил ход` });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+//Колируем самую большую ставку
+exports.coll = async (req, res) => {
+  try {
+    const lastBigBet = await User.findOne({ lastBet: -1 });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
