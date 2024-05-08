@@ -125,14 +125,15 @@ exports.raise = async (req, res) => {
     }
 
     if (player.stack < raiseAmount) {
-      return res
-        .status(400)
-        .json({ message: "Недостаточно средств для рейза" });
+      return res.status(400).json({ message: "Недостаточно средств для рейза" });
     }
 
     await User.updateOne(
       { name },
-      { $inc: { stack: -raiseAmount }, $set: { lastBet: raiseAmount } }
+      {
+        $inc: { stack: -raiseAmount },
+        $set: { lastBet: { $add: [raiseAmount, parseFloat(player.lastBet)] } } 
+      }
     );
 
     res.status(200).json({ message: "Ставка рейза успешно выполнена" });
@@ -162,6 +163,7 @@ exports.fold = async (req, res) => {
   }
 };
 
+//Коллируем самую большую ставку до нас
 exports.coll = async (req, res) => {
   try {
     const { name } = req.body;
@@ -169,27 +171,35 @@ exports.coll = async (req, res) => {
     const player = await User.findOne({ name });
 
     if (!player) {
-      return res.status(404).json({ message: "User not found" });
+      return res.status(404).json({ message: "Юзер не найден" });
     }
 
     // Находим пользователя с максимальным значением lastBet
     const lastBigBetUser = await User.findOne({}).sort({ lastBet: -1 });
 
     if (!lastBigBetUser) {
-      return res.status(404).json({ message: "No big bet found" });
+      return res
+        .status(404)
+        .json({ message: "Последняя самая большая ставка не найдена" });
     }
 
     // Проверяем, достаточно ли у текущего пользователя средств для коллирования
     if (player.stack < lastBigBetUser.lastBet) {
-      return res
-        .status(400)
-        .json({ message: "Not enough stack to cover the bet" });
+      return res.status(400).json({
+        message: `У ${player.name} не достаточно фишек для этого колла`,
+      });
     }
+
+    if (lastBigBetUser.lastBet === player.lastBet) {
+      return res.status(200).json("Игрок уже уровнял самую большую ставку");
+    }
+
+    let lastBetU = lastBigBetUser.lastBet - player.lastBet;
     // Обновляем текущего пользователя
     await User.updateOne(
-      { _id: player._id }, // Используем _id для уникального обновления
+      { _id: player._id },
       {
-        $inc: { stack: -lastBigBetUser.lastBet },
+        $inc: { stack: -lastBetU },
         $set: { lastBet: lastBigBetUser.lastBet },
       }
     );
