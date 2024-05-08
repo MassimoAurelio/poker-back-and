@@ -125,14 +125,18 @@ exports.raise = async (req, res) => {
     }
 
     if (player.stack < raiseAmount) {
-      return res.status(400).json({ message: "Недостаточно средств для рейза" });
+      return res
+        .status(400)
+        .json({ message: "Недостаточно средств для рейза" });
     }
+
+    let sum = parseInt(raiseAmount) + parseInt(player.lastBet);
 
     await User.updateOne(
       { name },
       {
         $inc: { stack: -raiseAmount },
-        $set: { lastBet: { $add: [raiseAmount, parseFloat(player.lastBet)] } } 
+        $set: { lastBet: sum },
       }
     );
 
@@ -184,7 +188,7 @@ exports.coll = async (req, res) => {
     }
 
     // Проверяем, достаточно ли у текущего пользователя средств для коллирования
-    if (player.stack < lastBigBetUser.lastBet) {
+    if (player.stack < lastBigBetUser.lastBet - player.lastBet) {
       return res.status(400).json({
         message: `У ${player.name} не достаточно фишек для этого колла`,
       });
