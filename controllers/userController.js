@@ -1,5 +1,73 @@
 const User = require("../models/modelUser");
 
+// Создаем массив с набором всех карт в колоде
+const suits = ["Hearts", "Diamonds", "Clubs", "Spades"];
+const values = [
+  "2",
+  "3",
+  "4",
+  "5",
+  "6",
+  "7",
+  "8",
+  "9",
+  "10",
+  "J",
+  "Q",
+  "K",
+  "A",
+];
+
+// Функция для перемешивания карт в колоде
+function shuffleDeck() {
+  const deck = [];
+  suits.forEach((suit) => {
+    values.forEach((value) => {
+      deck.push({ value, suit });
+    });
+  });
+  for (let i = deck.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [deck[i], deck[j]] = [deck[j], deck[i]];
+  }
+  return deck;
+}
+
+// Функция для раздачи двух карт каждому игроку
+function dealCards(deck, players) {
+  const playerCards = [];
+  for (let i = 0; i < players.length; i++) {
+    const cards = [deck.pop(), deck.pop()];
+    playerCards.push({ playerId: players[i]._id, cards });
+  }
+  return playerCards;
+}
+
+// Раздача карт игрокам
+exports.deal = async (req, res) => {
+  try {
+    // Получаем данные о всех игроках и создаем новую колоду
+    const players = await User.find({});
+    const deck = shuffleDeck();
+    // Раздаем карты каждому игроку
+    const playerCards = dealCards(deck, players);
+    // Обновляем профили игроков с их картами
+    await Promise.all(
+      playerCards.map(async (playerCard) => {
+        await User.updateOne(
+          { _id: playerCard.playerId },
+          { $set: { cards: playerCard.cards } }
+        );
+      })
+    );
+    res.status(200).json("Карты успешно разданы");
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+
+
 // Сесть за стол
 exports.join = async (req, res) => {
   const { player, position, stack } = req.body;

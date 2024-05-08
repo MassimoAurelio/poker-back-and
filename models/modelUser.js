@@ -1,7 +1,6 @@
-const { Timestamp } = require("mongodb");
 const mongoose = require("mongoose");
 
-const UserShema = new mongoose.Schema(
+const UserSchema = new mongoose.Schema(
   {
     name: {
       type: String,
@@ -24,12 +23,16 @@ const UserShema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    cards: [{ 
+      value: String,
+      suit: String
+    }]
   },
   {
     timestamps: true,
   }
 );
 
-const User = mongoose.model("User", UserShema);
+const User = mongoose.model("User", UserSchema);
 
 module.exports = User;
