@@ -1,7 +1,6 @@
 const User = require("../models/modelUser");
 
-// Создаем массив с набором всех карт в колоде
-const suits = ["Hearts", "Diamonds", "Clubs", "Spades"];
+const suits = ["Черви", "Пики", "Буби", "Крести"];
 const values = [
   "2",
   "3",
@@ -46,12 +45,9 @@ function dealCards(deck, players) {
 // Раздача карт игрокам
 exports.deal = async (req, res) => {
   try {
-    // Получаем данные о всех игроках и создаем новую колоду
     const players = await User.find({});
     const deck = shuffleDeck();
-    // Раздаем карты каждому игроку
     const playerCards = dealCards(deck, players);
-    // Обновляем профили игроков с их картами
     await Promise.all(
       playerCards.map(async (playerCard) => {
         await User.updateOne(
@@ -65,8 +61,6 @@ exports.deal = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
-
-
 
 // Сесть за стол
 exports.join = async (req, res) => {
@@ -219,14 +213,12 @@ exports.fold = async (req, res) => {
   try {
     const { name } = req.body;
 
-    // Находим игрока по имени
     const player = await User.findOne({ name });
 
     if (!player) {
       return res.status(404).json({ message: "Игрок не найден" });
     }
 
-    // Устанавливаем поле fold игрока в true
     await User.updateOne({ _id: player._id }, { fold: true });
 
     res.status(200).json({ message: `Игрок ${name} пропустил ход` });
@@ -239,14 +231,13 @@ exports.fold = async (req, res) => {
 exports.coll = async (req, res) => {
   try {
     const { name } = req.body;
-    // Находим пользователя по имени
+
     const player = await User.findOne({ name });
 
     if (!player) {
       return res.status(404).json({ message: "Юзер не найден" });
     }
 
-    // Находим пользователя с максимальным значением lastBet
     const lastBigBetUser = await User.findOne({}).sort({ lastBet: -1 });
 
     if (!lastBigBetUser) {
@@ -255,7 +246,6 @@ exports.coll = async (req, res) => {
         .json({ message: "Последняя самая большая ставка не найдена" });
     }
 
-    // Проверяем, достаточно ли у текущего пользователя средств для коллирования
     if (player.stack < lastBigBetUser.lastBet - player.lastBet) {
       return res.status(400).json({
         message: `У ${player.name} не достаточно фишек для этого колла`,
@@ -267,7 +257,7 @@ exports.coll = async (req, res) => {
     }
 
     let lastBetU = lastBigBetUser.lastBet - player.lastBet;
-    // Обновляем текущего пользователя
+
     await User.updateOne(
       { _id: player._id },
       {
@@ -282,31 +272,26 @@ exports.coll = async (req, res) => {
   }
 };
 
+//Передача хода следующему игроку
 exports.nextTurnPlayer = async (req, res) => {
   try {
-    // Шаг 1: Найти текущего игрока
     const currentTurn = await User.findOne({ currentPlayerId: true });
 
     if (!currentTurn) {
       return res.status(404).json({ message: "Текущий игрок не найден" });
     }
 
-    // Шаг 2: Снять currentPlayerId с текущего игрока
     await User.updateOne({ _id: currentTurn._id }, { currentPlayerId: false });
 
-    // Шаг 3: Найти следующего игрока
     let nextTurn;
 
-    // Проверяем, находится ли текущий игрок на последней позиции
     if (currentTurn.position === 6) {
-      // Если текущий игрок на последней позиции, переходим к первому игроку
       nextTurn = await User.findOne({
         position: 1,
         currentPlayerId: false,
         fold: false,
       });
     } else {
-      // Иначе ищем следующего игрока с позицией больше текущей
       nextTurn = await User.findOne({
         position: { $gt: currentTurn.position },
         currentPlayerId: false,
@@ -318,10 +303,8 @@ exports.nextTurnPlayer = async (req, res) => {
       return res.status(404).json({ message: "Следующий игрок не найден" });
     }
 
-    // Шаг 4: Установить следующему игроку currentPlayerId: true
     await User.updateOne({ _id: nextTurn._id }, { currentPlayerId: true });
 
-    // Шаг 5: Отправить ответ
     res.status(200).json({
       message: `Ход передан следующему игроку ${currentTurn.name}`,
       nextPlayer: nextTurn,
