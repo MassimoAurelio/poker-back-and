@@ -42,6 +42,8 @@ function dealCards(deck, players) {
   return playerCards;
 }
 
+
+
 // Раздача карт игрокам
 exports.deal = async (req, res) => {
   try {
