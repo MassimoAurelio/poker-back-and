@@ -1,6 +1,7 @@
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const RegUser = require("../models/regUser");
+const Room = require("../models/room");
 
 exports.register = async (req, res) => {
   try {
@@ -33,6 +34,45 @@ exports.login = async (req, res) => {
     }
     const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET);
     res.status(200).json({ token });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+exports.createRoom = async (req, res) => {
+  try {
+    const { name, password } = req.body;
+    const existingRoom = await Room.findOne({ name });
+    if (existingRoom) {
+      return res
+        .status(400)
+        .json({ message: "Комната с таким именем уже существует" });
+    }
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const newRoom = new Room({ name, password: hashedPassword });
+    await newRoom.save();
+    res.status(201).json({ roomId: newRoom._id });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+exports.enterRoom = async (req, res) => {
+  try {
+    const { name, password } = req.body;
+    const room = await Room.findOne({ name });
+
+    if (!room) {
+      return res.status(404).json({ message: "Комната не найдена" });
+    }
+
+    const isPasswordValid = await bcrypt.compare(password, room.password);
+
+    if (!isPasswordValid) {
+      return res.status(401).json({ message: "Неверный пароль для комнаты" });
+    }
+
+    res.status(200).json({ roomId: room._id });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
