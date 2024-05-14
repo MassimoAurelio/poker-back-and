@@ -33,7 +33,7 @@ exports.login = async (req, res) => {
       return res.status(401).json({ message: "Неверные учетные данные" });
     }
     const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET);
-    res.status(200).json({ token });
+    res.status(200).json({ token, user: { username: user.username } });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

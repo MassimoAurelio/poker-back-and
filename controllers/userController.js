@@ -42,8 +42,6 @@ function dealCards(deck, players) {
   return playerCards;
 }
 
-
-
 // Раздача карт игрокам
 exports.deal = async (req, res) => {
   try {
@@ -110,9 +108,9 @@ exports.join = async (req, res) => {
 
 //Встать из стола
 exports.leave = async (req, res) => {
-  const player = req.body.player;
+  const player = req.body.position;
   try {
-    await User.findOneAndDelete({ name: player });
+    await User.findOneAndDelete({ position: player });
     res.status(200).send(`Игрок ${player} покинул стол.`);
   } catch (error) {
     res
@@ -194,6 +192,14 @@ exports.raise = async (req, res) => {
         .json({ message: "Недостаточно средств для рейза" });
     }
 
+    const lastBigBetUser = await User.findOne({}).sort({ lastBet: -1 });
+
+    if (raiseAmount < lastBigBetUser.lastBet) {
+      return res
+        .status(400)
+        .json({ message: "Нельзя повысить на сумму меньше прошлого рейза" });
+    }
+
     let sum = parseInt(raiseAmount) + parseInt(player.lastBet);
 
     await User.updateOne(
@@ -224,6 +230,25 @@ exports.fold = async (req, res) => {
     await User.updateOne({ _id: player._id }, { fold: true });
 
     res.status(200).json({ message: `Игрок ${name} пропустил ход` });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+exports.check = async (req, res) => {
+  try {
+    const { name } = req.body;
+    const player = await User.findOne({ name });
+    if (!player) {
+      return res.status(404).json({ message: `Игрок ${name} не найден` });
+    }
+    const lastBigBetUser = await User.findOne({}).sort({ lastBet: -1 });
+
+    if (lastBigBetUser.lastBet !== player.lastBet) {
+      return res.status(404).json({ message: `Невозможно сделать чек` });
+    }
+
+    res.status(200).json({ message: `Игрок ${player.name} сделал чек` });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

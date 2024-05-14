@@ -12,6 +12,7 @@ router.post("/updatepos", userController.updatePositions);
 router.post("/mbbb", userController.mbBB);
 router.post("/nextplayer", userController.nextTurnPlayer);
 router.post("/raise", userController.raise);
+router.post("/check", userController.check);
 router.post("/fold", userController.fold);
 router.post("/coll", userController.coll);
 router.get("/deal", userController.deal);
