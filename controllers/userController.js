@@ -1,6 +1,6 @@
 const User = require("../models/modelUser");
 
-const suits = ["Черви", "Пики", "Буби", "Крести"];
+const suits = ["♥", "♠", "♦", "♣"];
 const values = [
   "2",
   "3",
