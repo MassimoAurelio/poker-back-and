@@ -18,7 +18,7 @@ router.post("/coll", userController.coll);
 router.get("/deal", userController.deal);
 router.post("/enterroom", authController.enterRoom);
 router.post("/createroom", authController.createRoom);
-/* router.get("/giveflop", userController.giveFlop); */
+router.get("/giveflop", userController.dealFlopCards);
 router.get("/room/:id", (req, res) => {
   res.redirect(`/room/${req.params.id}`);
 });

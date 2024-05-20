@@ -16,6 +16,8 @@ const values = [
   "K",
   "A",
 ];
+/* const playerCards = []; */
+/* const flopCards = []; */
 
 // Функция для перемешивания карт в колоде
 function shuffleDeck() {
@@ -41,6 +43,26 @@ function dealCards(deck, players) {
   }
   return playerCards;
 }
+
+// Функция для раздачи трех карт (флопа)
+function dealFlopCards() {
+  const flopCards = [];
+  const deck = shuffleDeck();
+  for (let i = 0; i < 5; i++) {
+    flopCards.push(deck.pop());
+  }
+  return flopCards;
+}
+
+//Выдача флопа
+exports.dealFlopCards = async (req, res) => {
+  try {
+    const flopCards = dealFlopCards(); // Функция, которая раздаст три карты
+    res.status(200).json({ flopCards });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
 
 // Раздача карт игрокам
 exports.deal = async (req, res) => {
@@ -146,6 +168,7 @@ exports.updatePositions = async (req, res) => {
 
     await User.updateOne({ position: 3 }, { $set: { currentPlayerId: true } });
 
+
     res.status(200).json("Позиции игроков успешно обновлены.");
   } catch (error) {
     res.status(500).json({
@@ -174,6 +197,8 @@ exports.mbBB = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+
+
 
 //Поднимаем ставку
 exports.raise = async (req, res) => {
