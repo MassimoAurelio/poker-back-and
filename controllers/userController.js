@@ -16,8 +16,8 @@ const values = [
   "K",
   "A",
 ];
-/* const playerCards = []; */
-/* const flopCards = []; */
+const flopCards = [];
+const playerCards = [];
 
 // Функция для перемешивания карт в колоде
 function shuffleDeck() {
@@ -36,7 +36,8 @@ function shuffleDeck() {
 
 // Функция для раздачи двух карт каждому игроку
 function dealCards(deck, players) {
-  const playerCards = [];
+  /* const playerCards = []; */
+  playerCards.length = 0;
   for (let i = 0; i < players.length; i++) {
     const cards = [deck.pop(), deck.pop()];
     playerCards.push({ playerId: players[i]._id, cards });
@@ -46,9 +47,18 @@ function dealCards(deck, players) {
 
 // Функция для раздачи трех карт (флопа)
 function dealFlopCards() {
-  const flopCards = [];
+  /* const flopCards = []; */
+  flopCards.length = 0;
   const deck = shuffleDeck();
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < 3; i++) {
+    flopCards.push(deck.pop());
+  }
+  return flopCards;
+}
+
+function dealTernCard() {
+  const deck = shuffleDeck();
+  for (let i = 0; i < 1; i++) {
     flopCards.push(deck.pop());
   }
   return flopCards;
@@ -58,6 +68,35 @@ function dealFlopCards() {
 exports.dealFlopCards = async (req, res) => {
   try {
     const flopCards = dealFlopCards(); // Функция, которая раздаст три карты
+    res.status(200).json({ flopCards });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+//Tern
+exports.tern = async (req, res) => {
+  try {
+    const players = await User.find({ fold: false });
+    const flopCards = dealTernCard();
+    const minPlayer = players.reduce((minPlayer, currentPlayer) => {
+      return currentPlayer.position < minPlayer.position
+        ? currentPlayer
+        : minPlayer;
+    });
+    const lastCurrentPlayerId = players.find((player) => {
+      return player.currentPlayerId === true;
+    });
+
+    await User.updateOne(
+      { name: lastCurrentPlayerId.name },
+      { $set: { currentPlayerId: false } }
+    );
+
+    await User.updateOne(
+      { name: minPlayer.name },
+      { $set: { currentPlayerId: true } }
+    );
     res.status(200).json({ flopCards });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -192,34 +231,6 @@ exports.mbBB = async (req, res) => {
     res.status(200).json({
       message: `Малый ${mbBet.stack} и большой блаинд ${bBBet.stack} высчитались из первой и второй позиции`,
     });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
-
-//Tern
-exports.tern = async (req, res) => {
-  try {
-    const players = await User.find({ fold: false });
-    const minPlayer = players.reduce((minPlayer, currentPlayer) => {
-      return currentPlayer.position < minPlayer.position
-        ? currentPlayer
-        : minPlayer;
-    });
-    const lastCurrentPlayerId = players.find((player) => {
-      return player.currentPlayerId === true;
-    });
-
-    await User.updateOne(
-      { name: lastCurrentPlayerId.name },
-      { $set: { currentPlayerId: false } }
-    );
-
-    await User.updateOne(
-      { name: minPlayer.name },
-      { $set: { currentPlayerId: true } }
-    );
-    res.status(200).json({ message: "Player updated successfully" });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
