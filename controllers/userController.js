@@ -168,7 +168,6 @@ exports.updatePositions = async (req, res) => {
 
     await User.updateOne({ position: 3 }, { $set: { currentPlayerId: true } });
 
-
     res.status(200).json("Позиции игроков успешно обновлены.");
   } catch (error) {
     res.status(500).json({
@@ -198,7 +197,33 @@ exports.mbBB = async (req, res) => {
   }
 };
 
+//Tern
+exports.tern = async (req, res) => {
+  try {
+    const players = await User.find({ fold: false });
+    const minPlayer = players.reduce((minPlayer, currentPlayer) => {
+      return currentPlayer.position < minPlayer.position
+        ? currentPlayer
+        : minPlayer;
+    });
+    const lastCurrentPlayerId = players.find((player) => {
+      return player.currentPlayerId === true;
+    });
 
+    await User.updateOne(
+      { name: lastCurrentPlayerId.name },
+      { $set: { currentPlayerId: false } }
+    );
+
+    await User.updateOne(
+      { name: minPlayer.name },
+      { $set: { currentPlayerId: true } }
+    );
+    res.status(200).json({ message: "Player updated successfully" });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
 
 //Поднимаем ставку
 exports.raise = async (req, res) => {
@@ -324,9 +349,11 @@ exports.coll = async (req, res) => {
   }
 };
 
-//Передача хода следующему игроку
+//Передача хода следующему активному игроку
 exports.nextTurnPlayer = async (req, res) => {
   try {
+    const players = await User.find({ fold: false }).sort({ position: 1 }); // Сортируем игроков по позиции
+
     const currentTurn = await User.findOne({ currentPlayerId: true });
 
     if (!currentTurn) {
@@ -337,18 +364,22 @@ exports.nextTurnPlayer = async (req, res) => {
 
     let nextTurn;
 
-    if (currentTurn.position === 6) {
-      nextTurn = await User.findOne({
-        position: 1,
-        currentPlayerId: false,
-        fold: false,
-      });
+    const playerMaxPosition = players[0]; // Первый игрок в списке будет иметь наименьшую позицию
+
+    if (currentTurn.position === playerMaxPosition.position) {
+      // Если текущий игрок находится на позиции с наибольшим значением
+      const nextPlayers = players.filter(
+        (player) => player.position > currentTurn.position
+      );
+      nextTurn = nextPlayers.find((player) => !player.fold);
     } else {
-      nextTurn = await User.findOne({
-        position: { $gt: currentTurn.position },
-        currentPlayerId: false,
-        fold: false,
-      });
+      nextTurn = players.find(
+        (player) => player.position > currentTurn.position && !player.fold
+      );
+      // Если следующий игрок не найден, это означает, что текущий игрок находится в последней позиции
+      if (!nextTurn) {
+        nextTurn = players.find((player) => !player.fold);
+      }
     }
 
     if (!nextTurn) {
