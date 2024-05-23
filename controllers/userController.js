@@ -74,6 +74,7 @@ exports.dealFlopCards = async (req, res) => {
   try {
     clearFlop();
     const flopCards = dealFlopCards();
+    await User.updateMany({}, { roundStage: "flop" });
     res.status(200).json({ flopCards });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -103,6 +104,37 @@ exports.tern = async (req, res) => {
       { name: minPlayer.name },
       { $set: { currentPlayerId: true } }
     );
+    await User.updateMany({}, { roundStage: "tern" });
+    res.status(200).json({ flopCards });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+//river
+exports.river = async (req, res) => {
+  try {
+    const players = await User.find({ fold: false });
+    const flopCards = dealTernCard();
+    const minPlayer = players.reduce((minPlayer, currentPlayer) => {
+      return currentPlayer.position < minPlayer.position
+        ? currentPlayer
+        : minPlayer;
+    });
+    const lastCurrentPlayerId = players.find((player) => {
+      return player.currentPlayerId === true;
+    });
+
+    await User.updateOne(
+      { name: lastCurrentPlayerId.name },
+      { $set: { currentPlayerId: false } }
+    );
+
+    await User.updateOne(
+      { name: minPlayer.name },
+      { $set: { currentPlayerId: true } }
+    );
+    await User.updateMany({}, { roundStage: "river" });
     res.status(200).json({ flopCards });
   } catch (error) {
     res.status(500).json({ message: error.message });

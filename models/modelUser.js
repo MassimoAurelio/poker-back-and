@@ -26,7 +26,16 @@ const UserSchema = new mongoose.Schema(
     cards: [{ 
       value: String,
       suit: String
-    }]
+    }],
+    actionCount: {
+      type: Number,
+      default: 0,
+    },
+    roundStage: { 
+      type: String,
+      enum: ['preflop', 'flop', 'turn', 'river'],
+      default: 'preflop'
+    }
   },
   {
     timestamps: true,

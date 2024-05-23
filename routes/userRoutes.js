@@ -20,6 +20,7 @@ router.post("/enterroom", authController.enterRoom);
 router.post("/createroom", authController.createRoom);
 router.get("/giveflop", userController.dealFlopCards);
 router.post("/tern", userController.tern);
+router.post("/river", userController.river);
 router.get("/room/:id", (req, res) => {
   res.redirect(`/room/${req.params.id}`);
 });
