@@ -17,6 +17,7 @@ const values = [
   "A",
 ];
 const flopCards = [];
+const deckWithoutPlayerCards = [];
 const playerCards = [];
 
 // Функция для перемешивания карт в колоде
@@ -31,43 +32,48 @@ function shuffleDeck() {
     const j = Math.floor(Math.random() * (i + 1));
     [deck[i], deck[j]] = [deck[j], deck[i]];
   }
+
   return deck;
 }
 
 // Функция для раздачи двух карт каждому игроку
 function dealCards(deck, players) {
-  /* const playerCards = []; */
   playerCards.length = 0;
   for (let i = 0; i < players.length; i++) {
     const cards = [deck.pop(), deck.pop()];
     playerCards.push({ playerId: players[i]._id, cards });
+  }
+  while (deck.length > 0) {
+    deckWithoutPlayerCards.push(deck.pop());
   }
   return playerCards;
 }
 
 // Функция для раздачи трех карт (флопа)
 function dealFlopCards() {
-  /* const flopCards = []; */
-  flopCards.length = 0;
-  const deck = shuffleDeck();
   for (let i = 0; i < 3; i++) {
-    flopCards.push(deck.pop());
+    flopCards.push(deckWithoutPlayerCards.pop());
   }
   return flopCards;
 }
 
+//Функция выдачи 1 карты на флоп
 function dealTernCard() {
-  const deck = shuffleDeck();
   for (let i = 0; i < 1; i++) {
-    flopCards.push(deck.pop());
+    flopCards.push(deckWithoutPlayerCards.pop());
   }
   return flopCards;
+}
+
+function clearFlop() {
+  return (flopCards.length = 0);
 }
 
 //Выдача флопа
 exports.dealFlopCards = async (req, res) => {
   try {
-    const flopCards = dealFlopCards(); // Функция, которая раздаст три карты
+    clearFlop();
+    const flopCards = dealFlopCards();
     res.status(200).json({ flopCards });
   } catch (error) {
     res.status(500).json({ message: error.message });
