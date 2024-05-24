@@ -74,7 +74,13 @@ exports.dealFlopCards = async (req, res) => {
   try {
     clearFlop();
     const flopCards = dealFlopCards();
+    const bbPlayer = await User.findOne({ position: 2 });
+    if (!bbPlayer) {
+      return res.status(404).json({ message: `Игрок ${bbPlayer} не найден` });
+    }
     await User.updateMany({}, { roundStage: "flop" });
+
+    await User.updateOne({ _id: bbPlayer._id }, { preflopEnd: false });
     res.status(200).json({ flopCards });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -86,6 +92,10 @@ exports.tern = async (req, res) => {
   try {
     const players = await User.find({ fold: false });
     const flopCards = dealTernCard();
+    const bbPlayer = await User.findOne({ position: 2 });
+    if (!bbPlayer) {
+      return res.status(404).json({ message: `Игрок ${bbPlayer} не найден` });
+    }
     const minPlayer = players.reduce((minPlayer, currentPlayer) => {
       return currentPlayer.position < minPlayer.position
         ? currentPlayer
@@ -94,6 +104,7 @@ exports.tern = async (req, res) => {
     const lastCurrentPlayerId = players.find((player) => {
       return player.currentPlayerId === true;
     });
+    await User.updateOne({ _id: bbPlayer._id }, { flopEnd: false });
 
     await User.updateOne(
       { name: lastCurrentPlayerId.name },
@@ -116,6 +127,10 @@ exports.river = async (req, res) => {
   try {
     const players = await User.find({ fold: false });
     const flopCards = dealTernCard();
+    const bbPlayer = await User.findOne({ position: 2 });
+    if (!bbPlayer) {
+      return res.status(404).json({ message: `Игрок ${bbPlayer} не найден` });
+    }
     const minPlayer = players.reduce((minPlayer, currentPlayer) => {
       return currentPlayer.position < minPlayer.position
         ? currentPlayer
@@ -134,6 +149,8 @@ exports.river = async (req, res) => {
       { name: minPlayer.name },
       { $set: { currentPlayerId: true } }
     );
+    await User.updateOne({ _id: bbPlayer._id }, { ternEnd: false });
+
     await User.updateMany({}, { roundStage: "river" });
     res.status(200).json({ flopCards });
   } catch (error) {
@@ -244,6 +261,11 @@ exports.updatePositions = async (req, res) => {
     }
 
     await User.updateOne({ position: 3 }, { $set: { currentPlayerId: true } });
+    const bbPlayer = await User.findOne({ position: 2 });
+    if (!bbPlayer) {
+      return res.status(404).json({ message: `Игрок ${bbPlayer} не найден` });
+    }
+    await User.updateOne({ _id: bbPlayer._id }, { riverEnd: false });
 
     res.status(200).json("Позиции игроков успешно обновлены.");
   } catch (error) {
@@ -348,6 +370,58 @@ exports.check = async (req, res) => {
     }
 
     res.status(200).json({ message: `Игрок ${player.name} сделал чек` });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+exports.endPreFlop = async (req, res) => {
+  try {
+    const bbPlayer = await User.findOne({ position: 2 });
+    if (!bbPlayer) {
+      return res.status(404).json({ message: `Игрок ${bbPlayer} не найден` });
+    }
+    await User.updateOne({ _id: bbPlayer._id }, { preflopEnd: true });
+    res.status(200).json({ message: `Игрок ${bbPlayer.name} сделал ход` });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+exports.endFlop = async (req, res) => {
+  try {
+    const bbPlayer = await User.findOne({ position: 2 });
+    if (!bbPlayer) {
+      return res.status(404).json({ message: `Игрок ${bbPlayer} не найден` });
+    }
+    await User.updateOne({ _id: bbPlayer._id }, { flopEnd: true });
+    res.status(200).json({ message: `Игрок ${bbPlayer.name} сделал ход` });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+exports.endTern = async (req, res) => {
+  try {
+    const bbPlayer = await User.findOne({ position: 2 });
+    if (!bbPlayer) {
+      return res.status(404).json({ message: `Игрок ${bbPlayer} не найден` });
+    }
+    await User.updateOne({ _id: bbPlayer._id }, { ternEnd: true });
+    res.status(200).json({ message: `Игрок ${bbPlayer.name} сделал ход` });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+exports.endRiver = async (req, res) => {
+  try {
+    const bbPlayer = await User.findOne({ position: 2 });
+    if (!bbPlayer) {
+      return res.status(404).json({ message: `Игрок ${bbPlayer} не найден` });
+    }
+    await User.updateOne({ _id: bbPlayer._id }, { riverEnd: true });
+    res.status(200).json({ message: `Игрок ${bbPlayer.name} сделал ход` });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

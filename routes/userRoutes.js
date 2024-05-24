@@ -21,6 +21,10 @@ router.post("/createroom", authController.createRoom);
 router.get("/giveflop", userController.dealFlopCards);
 router.post("/tern", userController.tern);
 router.post("/river", userController.river);
+router.post("/endpreflop", userController.endPreFlop);
+router.post("/endflop", userController.endFlop);
+router.post("/endtern", userController.endTern);
+router.post("/endriver", userController.endRiver);
 router.get("/room/:id", (req, res) => {
   res.redirect(`/room/${req.params.id}`);
 });

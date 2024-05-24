@@ -23,19 +23,37 @@ const UserSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
-    cards: [{ 
-      value: String,
-      suit: String
-    }],
+    cards: [
+      {
+        value: String,
+        suit: String,
+      },
+    ],
     actionCount: {
       type: Number,
       default: 0,
     },
-    roundStage: { 
+    roundStage: {
       type: String,
-      enum: ['preflop', 'flop', 'turn', 'river'],
-      default: 'preflop'
-    }
+      enum: ["preflop", "flop", "turn", "river"],
+      default: "preflop",
+    },
+    preflopEnd: {
+      type: Boolean,
+      default: false,
+    },
+    flopEnd: {
+      type: Boolean,
+      default: false,
+    },
+    ternEnd: {
+      type: Boolean,
+      default: false,
+    },
+    riverEnd: {
+      type: Boolean,
+      default: false,
+    },
   },
   {
     timestamps: true,
