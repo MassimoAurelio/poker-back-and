@@ -73,14 +73,32 @@ function clearFlop() {
 exports.dealFlopCards = async (req, res) => {
   try {
     clearFlop();
+    const players = await User.find({ fold: false });
     const flopCards = dealFlopCards();
     const bbPlayer = await User.findOne({ position: 2 });
     if (!bbPlayer) {
       return res.status(404).json({ message: `Игрок ${bbPlayer} не найден` });
     }
     await User.updateMany({}, { roundStage: "flop" });
-
+    const minPlayer = players.reduce((minPlayer, currentPlayer) => {
+      return currentPlayer.position < minPlayer.position
+        ? currentPlayer
+        : minPlayer;
+    });
+    const lastCurrentPlayerId = players.find((player) => {
+      return player.currentPlayerId === true;
+    });
     await User.updateOne({ _id: bbPlayer._id }, { preflopEnd: false });
+
+    await User.updateOne(
+      { name: lastCurrentPlayerId.name },
+      { $set: { currentPlayerId: false } }
+    );
+
+    await User.updateOne(
+      { name: minPlayer.name },
+      { $set: { currentPlayerId: true } }
+    );
     res.status(200).json({ flopCards });
   } catch (error) {
     res.status(500).json({ message: error.message });
