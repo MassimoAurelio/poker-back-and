@@ -1,4 +1,5 @@
 const User = require("../models/modelUser");
+const io = require("../index");
 
 const suits = ["♥", "♠", "♦", "♣"];
 const values = [
@@ -190,6 +191,8 @@ exports.deal = async (req, res) => {
         );
       })
     );
+    // Эмитируем событие через Socket.IO
+    io.emit("deal", { message: "Карты успешно разданы", playerCards });
     res.status(200).json("Карты успешно разданы");
   } catch (error) {
     res.status(500).json({ message: error.message });
