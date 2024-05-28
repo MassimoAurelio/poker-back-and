@@ -1,5 +1,4 @@
 const User = require("../models/modelUser");
-const io = require("../index");
 
 const suits = ["♥", "♠", "♦", "♣"];
 const values = [
@@ -199,6 +198,7 @@ exports.deal = async (req, res) => {
   }
 };
 
+
 // Сесть за стол
 exports.join = async (req, res) => {
   const { player, position, stack } = req.body;
@@ -227,7 +227,6 @@ exports.join = async (req, res) => {
         { $inc: { stack: -50 }, $set: { lastBet: 50 } }
       );
     }
-
     if (position === 3) {
       await User.updateMany(
         { position: 3 },
