@@ -51,64 +51,6 @@ mongoose
 io.on("connection", (socket) => {
   console.log("New client connected");
 
-  socket.on("join", async (data) => {
-    try {
-      const { player, position, stack } = data;
-
-      const existingPlayer = await User.findOne({ name: player });
-      if (existingPlayer) {
-        socket.emit("error", {
-          message: "Такой игрок уже сидит за столом",
-        });
-        return;
-      }
-
-      const positionPlayer = await User.findOne({ position: position });
-      if (positionPlayer) {
-        socket.emit("error", {
-          message: "Это место на столе уже занято",
-        });
-        return;
-      }
-
-      const newPlayer = new User({ name: player, position, stack });
-      await newPlayer.save();
-
-      let betAmount;
-      if (position === 1) {
-        betAmount = 25;
-        await User.updateOne(
-          { _id: newPlayer._id },
-          { $inc: { stack: -betAmount }, $set: { lastBet: betAmount } }
-        );
-      } else if (position === 2) {
-        betAmount = 50;
-        await User.updateOne(
-          { _id: newPlayer._id },
-          { $inc: { stack: -betAmount }, $set: { lastBet: betAmount } }
-        );
-      }
-
-      if (position === 3) {
-        await User.updateMany(
-          { position: 3 },
-          { $set: { currentPlayerId: true } }
-        );
-      }
-
-      socket.emit(
-        "success",
-        `Игрок ${player} присоединился к столу на позицию ${position}.`
-      );
-    } catch (error) {
-      console.error("Error joining player:", error.message);
-      socket.emit("error", {
-        message: "Ошибка при присоединении игрока",
-        error: error.message,
-      });
-    }
-  });
-
   socket.on("getPlayers", async () => {
     try {
       const players = await User.find({});
