@@ -196,7 +196,6 @@ exports.deal = async (req, res) => {
   }
 };
 
-
 // Сесть за стол
 exports.join = async (req, res) => {
   const { player, position, stack } = req.body;
@@ -331,23 +330,40 @@ exports.raise = async (req, res) => {
         .json({ message: "Недостаточно средств для рейза" });
     }
 
-    const lastBigBetUser = await User.findOne({}).sort({ lastBet: -1 });
+    // Определяем текущую стадию игры
+    const currentRoundStage = player.roundStage;
+    let updateData = {};
 
-    if (raiseAmount < lastBigBetUser.lastBet) {
-      return res
-        .status(400)
-        .json({ message: "Нельзя повысить на сумму меньше прошлого рейза" });
+    switch (currentRoundStage) {
+      case "preflop":
+        updateData = {
+          $inc: { stack: -raiseAmount },
+          $set: { preFlopLastBet: raiseAmount },
+        };
+        break;
+      case "flop":
+        updateData = {
+          $inc: { stack: -raiseAmount },
+          $set: { flopLastBet: raiseAmount },
+        };
+        break;
+      case "turn":
+        updateData = {
+          $inc: { stack: -raiseAmount },
+          $set: { turnLastBet: raiseAmount },
+        };
+        break;
+      case "river":
+        updateData = {
+          $inc: { stack: -raiseAmount },
+          $set: { riverLastBet: raiseAmount },
+        };
+        break;
+      default:
+        return res.status(400).json({ message: "Неизвестная стадия игры" });
     }
 
-    let sum = parseInt(raiseAmount) + parseInt(player.lastBet);
-
-    await User.updateOne(
-      { name },
-      {
-        $inc: { stack: -raiseAmount },
-        $set: { lastBet: sum },
-      }
-    );
+    await User.updateOne({ name }, updateData);
 
     res.status(200).json({ message: "Ставка рейза успешно выполнена" });
   } catch (error) {
@@ -393,94 +409,65 @@ exports.check = async (req, res) => {
   }
 };
 
-exports.endPreFlop = async (req, res) => {
-  try {
-    const bbPlayer = await User.findOne({ position: 2 });
-    if (!bbPlayer) {
-      return res.status(404).json({ message: `Игрок ${bbPlayer} не найден` });
-    }
-    await User.updateOne({ _id: bbPlayer._id }, { preflopEnd: true });
-    res.status(200).json({ message: `Игрок ${bbPlayer.name} сделал ход` });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
-
-exports.endFlop = async (req, res) => {
-  try {
-    const bbPlayer = await User.findOne({ position: 2 });
-    if (!bbPlayer) {
-      return res.status(404).json({ message: `Игрок ${bbPlayer} не найден` });
-    }
-    await User.updateOne({ _id: bbPlayer._id }, { flopEnd: true });
-    res.status(200).json({ message: `Игрок ${bbPlayer.name} сделал ход` });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
-
-exports.endTern = async (req, res) => {
-  try {
-    const bbPlayer = await User.findOne({ position: 2 });
-    if (!bbPlayer) {
-      return res.status(404).json({ message: `Игрок ${bbPlayer} не найден` });
-    }
-    await User.updateOne({ _id: bbPlayer._id }, { ternEnd: true });
-    res.status(200).json({ message: `Игрок ${bbPlayer.name} сделал ход` });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
-
-exports.endRiver = async (req, res) => {
-  try {
-    const bbPlayer = await User.findOne({ position: 2 });
-    if (!bbPlayer) {
-      return res.status(404).json({ message: `Игрок ${bbPlayer} не найден` });
-    }
-    await User.updateOne({ _id: bbPlayer._id }, { riverEnd: true });
-    res.status(200).json({ message: `Игрок ${bbPlayer.name} сделал ход` });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
-
-//Коллируем самую большую ставку до нас
+// Коллируем в зависимости от стадии игры
 exports.coll = async (req, res) => {
   try {
     const { name } = req.body;
 
     const player = await User.findOne({ name });
+    const players = await User.find({});
 
     if (!player) {
       return res.status(404).json({ message: "Юзер не найден" });
     }
-
-    const lastBigBetUser = await User.findOne({}).sort({ lastBet: -1 });
-
-    if (!lastBigBetUser) {
-      return res
-        .status(404)
-        .json({ message: "Последняя самая большая ставка не найдена" });
+    if (players.length === 0) {
+      return res.status(404).json({ message: "Юзера не найдены" });
     }
 
-    if (player.stack < lastBigBetUser.lastBet - player.lastBet) {
+    const currentRoundStage = player.roundStage;
+
+    let lastBet;
+    switch (currentRoundStage) {
+      case "preflop":
+        lastBet = player.preFlopLastBet;
+        break;
+      case "flop":
+        lastBet = player.flopLastBet;
+        break;
+      case "turn":
+        lastBet = player.turnLastBet;
+        break;
+      case "river":
+        lastBet = player.riverLastBet;
+        break;
+      default:
+        return res.status(400).json({ message: "Неверная стадия игры" });
+    }
+
+    console.log(lastBet);
+    if (lastBet === 0) {
+      return res
+        .status(400)
+        .json({ message: "Нет предыдущих ставок для колла" });
+    }
+
+    const callAmount = lastBet - player.lastBet;
+
+    if (player.stack < callAmount) {
       return res.status(400).json({
-        message: `У ${player.name} не достаточно фишек для этого колла`,
+        message: `У ${player.name} недостаточно фишек для этого колла`,
       });
     }
 
-    if (lastBigBetUser.lastBet === player.lastBet) {
+    if (callAmount === 0) {
       return res.status(200).json("Игрок уже уровнял самую большую ставку");
     }
-
-    let lastBetU = lastBigBetUser.lastBet - player.lastBet;
 
     await User.updateOne(
       { _id: player._id },
       {
-        $inc: { stack: -lastBetU },
-        $set: { lastBet: lastBigBetUser.lastBet },
+        $inc: { stack: -callAmount },
+        $set: { lastBet: lastBet },
       }
     );
 

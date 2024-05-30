@@ -23,36 +23,32 @@ const UserSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    preFlopLastBet: {
+      type: Number,
+      default: 0,
+    },
+    flopLastBet: {
+      type: Number,
+      default: 0,
+    },
+    turnLastBet: {
+      type: Number,
+      default: 0,
+    },
+    riverLastBet: {
+      type: Number,
+      default: 0,
+    },
     cards: [
       {
         value: String,
         suit: String,
       },
     ],
-    actionCount: {
-      type: Number,
-      default: 0,
-    },
     roundStage: {
       type: String,
       enum: ["preflop", "flop", "turn", "river"],
       default: "preflop",
-    },
-    preflopEnd: {
-      type: Boolean,
-      default: false,
-    },
-    flopEnd: {
-      type: Boolean,
-      default: false,
-    },
-    ternEnd: {
-      type: Boolean,
-      default: false,
-    },
-    riverEnd: {
-      type: Boolean,
-      default: false,
     },
   },
   {
