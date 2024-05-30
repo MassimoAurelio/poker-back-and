@@ -421,37 +421,49 @@ exports.coll = async (req, res) => {
       return res.status(404).json({ message: "Юзер не найден" });
     }
     if (players.length === 0) {
-      return res.status(404).json({ message: "Юзера не найдены" });
+      return res.status(404).json({ message: "Юзеры не найдены" });
     }
 
     const currentRoundStage = player.roundStage;
 
-    let lastBet;
+    const maxPreflopLastBet = players.reduce((a, b) =>
+      a.preFlopLastBet > b.preFlopLastBet ? a : b
+    );
+    const maxFlopLastBet = players.reduce((a, b) =>
+      a.flopLastBet > b.flopLastBet ? a : b
+    );
+    const maxTurnLastBet = players.reduce((a, b) =>
+      a.turnLastBet > b.turnLastBet ? a : b
+    );
+    const maxRiverLastBet = players.reduce((a, b) =>
+      a.riverLastBet > b.riverLastBet ? a : b
+    );
+
+    let bet;
     switch (currentRoundStage) {
       case "preflop":
-        lastBet = player.preFlopLastBet;
+        bet = maxPreflopLastBet.preFlopLastBet;
         break;
       case "flop":
-        lastBet = player.flopLastBet;
+        bet = maxFlopLastBet.flopLastBet;
         break;
       case "turn":
-        lastBet = player.turnLastBet;
+        bet = maxTurnLastBet.turnLastBet;
         break;
       case "river":
-        lastBet = player.riverLastBet;
+        bet = maxRiverLastBet.riverLastBet;
         break;
       default:
         return res.status(400).json({ message: "Неверная стадия игры" });
     }
 
-    console.log(lastBet);
-    if (lastBet === 0) {
+    if (bet === 0) {
       return res
         .status(400)
         .json({ message: "Нет предыдущих ставок для колла" });
     }
 
-    const callAmount = lastBet - player.lastBet;
+    const callAmount = bet - player.lastBet;
 
     if (player.stack < callAmount) {
       return res.status(400).json({
@@ -463,11 +475,28 @@ exports.coll = async (req, res) => {
       return res.status(200).json("Игрок уже уровнял самую большую ставку");
     }
 
+    // Обновление соответствующего поля ставки
+    let updateField = {};
+    switch (currentRoundStage) {
+      case "preflop":
+        updateField = { preFlopLastBet: bet };
+        break;
+      case "flop":
+        updateField = { flopLastBet: bet };
+        break;
+      case "turn":
+        updateField = { turnLastBet: bet };
+        break;
+      case "river":
+        updateField = { riverLastBet: bet };
+        break;
+    }
+
     await User.updateOne(
       { _id: player._id },
       {
         $inc: { stack: -callAmount },
-        $set: { lastBet: lastBet },
+        $set: { lastBet: bet, ...updateField },
       }
     );
 
