@@ -216,12 +216,12 @@ exports.join = async (req, res) => {
     if (position === 1) {
       await User.updateOne(
         { _id: newPlayer._id },
-        { $inc: { stack: -25 }, $set: { lastBet: 25 } }
+        { $inc: { stack: -25 }, $set: { preFlopLastBet: 25, lastBet: 25 } }
       );
     } else if (position === 2) {
       await User.updateOne(
         { _id: newPlayer._id },
-        { $inc: { stack: -50 }, $set: { lastBet: 50 } }
+        { $inc: { stack: -50 }, $set: { preFlopLastBet: 50, lastBet: 50 } }
       );
     }
     if (position === 3) {
@@ -332,32 +332,27 @@ exports.raise = async (req, res) => {
 
     // Определяем текущую стадию игры
     const currentRoundStage = player.roundStage;
-    let updateData = {};
+    let updateData = {
+      $inc: { stack: -raiseAmount },
+      $set: {},
+    };
 
     switch (currentRoundStage) {
       case "preflop":
-        updateData = {
-          $inc: { stack: -raiseAmount },
-          $set: { preFlopLastBet: raiseAmount },
-        };
+        updateData.$inc.preFlopLastBet = raiseAmount;
+        updateData.$set.lastBet = (player.preFlopLastBet || 0) + raiseAmount;
         break;
       case "flop":
-        updateData = {
-          $inc: { stack: -raiseAmount },
-          $set: { flopLastBet: raiseAmount },
-        };
+        updateData.$inc.flopLastBet = raiseAmount;
+        updateData.$set.lastBet = (player.flopLastBet || 0) + raiseAmount;
         break;
       case "turn":
-        updateData = {
-          $inc: { stack: -raiseAmount },
-          $set: { turnLastBet: raiseAmount },
-        };
+        updateData.$inc.turnLastBet = raiseAmount;
+        updateData.$set.lastBet = (player.turnLastBet || 0) + raiseAmount;
         break;
       case "river":
-        updateData = {
-          $inc: { stack: -raiseAmount },
-          $set: { riverLastBet: raiseAmount },
-        };
+        updateData.$inc.riverLastBet = raiseAmount;
+        updateData.$set.lastBet = (player.riverLastBet || 0) + raiseAmount;
         break;
       default:
         return res.status(400).json({ message: "Неизвестная стадия игры" });
@@ -474,8 +469,6 @@ exports.coll = async (req, res) => {
     if (callAmount === 0) {
       return res.status(200).json("Игрок уже уровнял самую большую ставку");
     }
-
-    // Обновление соответствующего поля ставки
     let updateField = {};
     switch (currentRoundStage) {
       case "preflop":
@@ -509,7 +502,7 @@ exports.coll = async (req, res) => {
 //Передача хода следующему активному игроку
 exports.nextTurnPlayer = async (req, res) => {
   try {
-    const players = await User.find({ fold: false }).sort({ position: 1 }); // Сортируем игроков по позиции
+    const players = await User.find({ fold: false }).sort({ position: 1 });
 
     const currentTurn = await User.findOne({ currentPlayerId: true });
 
@@ -521,10 +514,9 @@ exports.nextTurnPlayer = async (req, res) => {
 
     let nextTurn;
 
-    const playerMaxPosition = players[0]; // Первый игрок в списке будет иметь наименьшую позицию
+    const playerMaxPosition = players[0];
 
     if (currentTurn.position === playerMaxPosition.position) {
-      // Если текущий игрок находится на позиции с наибольшим значением
       const nextPlayers = players.filter(
         (player) => player.position > currentTurn.position
       );
@@ -533,7 +525,7 @@ exports.nextTurnPlayer = async (req, res) => {
       nextTurn = players.find(
         (player) => player.position > currentTurn.position && !player.fold
       );
-      // Если следующий игрок не найден, это означает, что текущий игрок находится в последней позиции
+
       if (!nextTurn) {
         nextTurn = players.find((player) => !player.fold);
       }
