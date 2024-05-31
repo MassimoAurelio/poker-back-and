@@ -1,5 +1,5 @@
 const User = require("../models/modelUser");
-
+const { Hand } = require("pokersolver");
 const suits = ["♥", "♠", "♦", "♣"];
 const values = [
   "2",
@@ -116,6 +116,33 @@ exports.dealFlopCards = async (req, res) => {
   }
 };
 
+//Определение победителя
+exports.findWinner = async (req, res) => {
+  try {
+    
+    const players = await User.find({ fold: false, roundStage: "river" });
+    const communityCards = flopCards; 
+
+    const hands = players.map((player) => ({
+      player: player.name,
+      hand: Hand.solve([
+        ...player.cards.map((card) => `${card.value}${card.suit}`),
+        ...communityCards.map((card) => `${card.value}${card.suit}`),
+      ]),
+    }));
+    
+    const winningHand = Hand.winners(hands.map((h) => h.hand));
+
+    const winners = hands
+      .filter((h) => winningHand.includes(h.hand))
+      .map((h) => h.player);
+
+    res.status(200).json({ winners });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 //Tern
 exports.turn = async (req, res) => {
   try {
@@ -190,6 +217,7 @@ exports.river = async (req, res) => {
 // Раздача карт игрокам
 exports.deal = async (req, res) => {
   try {
+   /*  clearFlop(); */
     const players = await User.find({});
     const deck = shuffleDeck();
     const playerCards = dealCards(deck, players);
@@ -343,7 +371,7 @@ exports.raise = async (req, res) => {
 
     // Определяем текущую стадию игры
     const currentRoundStage = player.roundStage;
-    console.log(currentRoundStage);
+
     let updateData = {
       $inc: { stack: -raiseAmount },
       $set: {},
