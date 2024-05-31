@@ -75,30 +75,41 @@ exports.dealFlopCards = async (req, res) => {
     clearFlop();
     const players = await User.find({ fold: false });
     const flopCards = dealFlopCards();
+
     const bbPlayer = await User.findOne({ position: 2 });
     if (!bbPlayer) {
-      return res.status(404).json({ message: `Игрок ${bbPlayer} не найден` });
+      return res
+        .status(404)
+        .json({ message: `Игрок на большом блаинде не найден` });
     }
-    await User.updateMany({}, { roundStage: "flop" });
+
     const minPlayer = players.reduce((minPlayer, currentPlayer) => {
       return currentPlayer.position < minPlayer.position
         ? currentPlayer
         : minPlayer;
     });
+
     const lastCurrentPlayerId = players.find((player) => {
       return player.currentPlayerId === true;
     });
+
+    if (!lastCurrentPlayerId) {
+      return res.status(400).json({ message: "Последний игрок не найден" });
+    }
+
     await User.updateOne({ _id: bbPlayer._id }, { preflopEnd: false });
 
     await User.updateOne(
-      { name: lastCurrentPlayerId.name },
+      { _id: lastCurrentPlayerId._id },
       { $set: { currentPlayerId: false } }
     );
 
     await User.updateOne(
-      { name: minPlayer.name },
+      { _id: minPlayer._id },
       { $set: { currentPlayerId: true } }
     );
+
+    await User.updateMany({}, { roundStage: "flop" });
     res.status(200).json({ flopCards });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -106,7 +117,7 @@ exports.dealFlopCards = async (req, res) => {
 };
 
 //Tern
-exports.tern = async (req, res) => {
+exports.turn = async (req, res) => {
   try {
     const players = await User.find({ fold: false });
     const flopCards = dealTernCard();
@@ -133,7 +144,7 @@ exports.tern = async (req, res) => {
       { name: minPlayer.name },
       { $set: { currentPlayerId: true } }
     );
-    await User.updateMany({}, { roundStage: "tern" });
+    await User.updateMany({}, { roundStage: "turn" });
     res.status(200).json({ flopCards });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -332,6 +343,7 @@ exports.raise = async (req, res) => {
 
     // Определяем текущую стадию игры
     const currentRoundStage = player.roundStage;
+    console.log(currentRoundStage);
     let updateData = {
       $inc: { stack: -raiseAmount },
       $set: {},
