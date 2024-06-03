@@ -76,6 +76,8 @@ exports.dealFlopCards = async (req, res) => {
     const players = await User.find({ fold: false });
     const flopCards = dealFlopCards();
 
+    await User.updateMany({}, { lastBet: 0 });
+
     const bbPlayer = await User.findOne({ position: 2 });
     if (!bbPlayer) {
       return res
@@ -116,28 +118,50 @@ exports.dealFlopCards = async (req, res) => {
   }
 };
 
-//Определение победителя
+// Определение победителя
 exports.findWinner = async (req, res) => {
   try {
-    
-    const players = await User.find({ fold: false, roundStage: "river" });
-    const communityCards = flopCards; 
 
-    const hands = players.map((player) => ({
-      player: player.name,
-      hand: Hand.solve([
-        ...player.cards.map((card) => `${card.value}${card.suit}`),
-        ...communityCards.map((card) => `${card.value}${card.suit}`),
-      ]),
-    }));
+    const players = await User.find({ fold: false, roundStage: "river" });
+
+ 
+    const communityCards = flopCards;
+
+    console.log(communityCards);
+
+
+    const hands = players.map((player) => {
+      const playerCards = player.cards.map((card) => `${card.value}${card.suit}`);
+      const allCards = [...playerCards, ...communityCards.map((card) => `${card.value}${card.suit}`)];
+      return {
+        player: player.name,
+        hand: Hand.solve(allCards),
+      };
+    });
+
     
     const winningHand = Hand.winners(hands.map((h) => h.hand));
+    let winnerSum = 0;
 
-    const winners = hands
-      .filter((h) => winningHand.includes(h.hand))
-      .map((h) => h.player);
+   
+    const playersInRound = await User.find({});
+    playersInRound.forEach((item) => {
+      winnerSum += item.preFlopLastBet + item.flopLastBet + item.turnLastBet + item.riverLastBet;
+    });
 
-    res.status(200).json({ winners });
+   
+    const winners = hands.filter((h) => winningHand.includes(h.hand)).map((h) => h.player);
+
+    res.status(200).json({ winners, winnerSum });
+
+    
+    for (const winner of winners) {
+      const winnerPlayer = await User.findOne({ name: winner });
+      if (winnerPlayer) {
+        winnerPlayer.stack += winnerSum;
+        await winnerPlayer.save();
+      }
+    }
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -149,6 +173,7 @@ exports.turn = async (req, res) => {
     const players = await User.find({ fold: false });
     const flopCards = dealTernCard();
     const bbPlayer = await User.findOne({ position: 2 });
+    await User.updateMany({}, { lastBet: 0 });
     if (!bbPlayer) {
       return res.status(404).json({ message: `Игрок ${bbPlayer} не найден` });
     }
@@ -184,6 +209,7 @@ exports.river = async (req, res) => {
     const players = await User.find({ fold: false });
     const flopCards = dealTernCard();
     const bbPlayer = await User.findOne({ position: 2 });
+    await User.updateMany({}, { lastBet: 0 });
     if (!bbPlayer) {
       return res.status(404).json({ message: `Игрок ${bbPlayer} не найден` });
     }
@@ -217,7 +243,6 @@ exports.river = async (req, res) => {
 // Раздача карт игрокам
 exports.deal = async (req, res) => {
   try {
-   /*  clearFlop(); */
     const players = await User.find({});
     const deck = shuffleDeck();
     const playerCards = dealCards(deck, players);
@@ -369,14 +394,12 @@ exports.raise = async (req, res) => {
         .json({ message: "Недостаточно средств для рейза" });
     }
 
-    // Определяем текущую стадию игры
-    const currentRoundStage = player.roundStage;
-
     let updateData = {
       $inc: { stack: -raiseAmount },
       $set: {},
     };
 
+    const currentRoundStage = player.roundStage;
     switch (currentRoundStage) {
       case "preflop":
         updateData.$inc.preFlopLastBet = raiseAmount;
@@ -475,21 +498,16 @@ exports.coll = async (req, res) => {
     );
 
     let bet;
-    switch (currentRoundStage) {
-      case "preflop":
-        bet = maxPreflopLastBet.preFlopLastBet;
-        break;
-      case "flop":
-        bet = maxFlopLastBet.flopLastBet;
-        break;
-      case "turn":
-        bet = maxTurnLastBet.turnLastBet;
-        break;
-      case "river":
-        bet = maxRiverLastBet.riverLastBet;
-        break;
-      default:
-        return res.status(400).json({ message: "Неверная стадия игры" });
+    if (currentRoundStage === "preflop") {
+      bet = maxPreflopLastBet.preFlopLastBet;
+    } else if (currentRoundStage === "flop") {
+      bet = maxFlopLastBet.flopLastBet;
+    } else if (currentRoundStage === "turn") {
+      bet = maxTurnLastBet.turnLastBet;
+    } else if (currentRoundStage === "river") {
+      bet = maxRiverLastBet.riverLastBet;
+    } else {
+      return res.status(400).json({ message: "Неверная стадия игры" });
     }
 
     if (bet === 0) {
@@ -509,27 +527,26 @@ exports.coll = async (req, res) => {
     if (callAmount === 0) {
       return res.status(200).json("Игрок уже уровнял самую большую ставку");
     }
+
     let updateField = {};
-    switch (currentRoundStage) {
-      case "preflop":
-        updateField = { preFlopLastBet: bet };
-        break;
-      case "flop":
-        updateField = { flopLastBet: bet };
-        break;
-      case "turn":
-        updateField = { turnLastBet: bet };
-        break;
-      case "river":
-        updateField = { riverLastBet: bet };
-        break;
+    if (currentRoundStage === "preflop") {
+      updateField = { preFlopLastBet: bet };
+    } else if (currentRoundStage === "flop") {
+      updateField = { flopLastBet: bet };
+    } else if (currentRoundStage === "turn") {
+      updateField = { turnLastBet: bet };
+    } else if (currentRoundStage === "river") {
+      updateField = { riverLastBet: bet };
     }
 
     await User.updateOne(
       { _id: player._id },
       {
         $inc: { stack: -callAmount },
-        $set: { lastBet: bet, ...updateField },
+        $set: {
+          lastBet: player.lastBet + callAmount,
+          ...updateField,
+        },
       }
     );
 
