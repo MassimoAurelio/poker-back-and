@@ -46,6 +46,7 @@ function dealCards(deck, players) {
   while (deck.length > 0) {
     deckWithoutPlayerCards.push(deck.pop());
   }
+  console.log(deckWithoutPlayerCards);
   return playerCards;
 }
 
@@ -59,6 +60,13 @@ function dealFlopCards() {
 
 //Функция выдачи 1 карты на флоп
 function dealTernCard() {
+  for (let i = 0; i < 1; i++) {
+    flopCards.push(deckWithoutPlayerCards.pop());
+  }
+  return flopCards;
+}
+//Функция выдачи 1 карты на флоп
+function dealRiverCard() {
   for (let i = 0; i < 1; i++) {
     flopCards.push(deckWithoutPlayerCards.pop());
   }
@@ -121,40 +129,42 @@ exports.dealFlopCards = async (req, res) => {
 // Определение победителя
 exports.findWinner = async (req, res) => {
   try {
-
     const players = await User.find({ fold: false, roundStage: "river" });
 
- 
     const communityCards = flopCards;
 
     console.log(communityCards);
 
-
     const hands = players.map((player) => {
-      const playerCards = player.cards.map((card) => `${card.value}${card.suit}`);
-      const allCards = [...playerCards, ...communityCards.map((card) => `${card.value}${card.suit}`)];
+      const playerCards = player.cards.map(
+        (card) => `${card.value}${card.suit}`
+      );
+      const allCards = [
+        ...playerCards,
+        ...communityCards.map((card) => `${card.value}${card.suit}`),
+      ];
       return {
         player: player.name,
         hand: Hand.solve(allCards),
       };
     });
 
-    
     const winningHand = Hand.winners(hands.map((h) => h.hand));
     let winnerSum = 0;
 
-   
     const playersInRound = await User.find({});
     playersInRound.forEach((item) => {
-      winnerSum += item.preFlopLastBet + item.flopLastBet + item.turnLastBet + item.riverLastBet;
+      winnerSum +=
+        item.preFlopLastBet +
+        item.flopLastBet +
+        item.turnLastBet +
+        item.riverLastBet;
     });
 
-   
-    const winners = hands.filter((h) => winningHand.includes(h.hand)).map((h) => h.player);
+    const winners = hands
+      .filter((h) => winningHand.includes(h.hand))
+      .map((h) => h.player);
 
-    res.status(200).json({ winners, winnerSum });
-
-    
     for (const winner of winners) {
       const winnerPlayer = await User.findOne({ name: winner });
       if (winnerPlayer) {
@@ -162,6 +172,8 @@ exports.findWinner = async (req, res) => {
         await winnerPlayer.save();
       }
     }
+    await User.updateMany({}, { lastBet: 0 });
+    res.status(200).json({ winners, winnerSum });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -207,7 +219,7 @@ exports.turn = async (req, res) => {
 exports.river = async (req, res) => {
   try {
     const players = await User.find({ fold: false });
-    const flopCards = dealTernCard();
+    const flopCards = dealRiverCard();
     const bbPlayer = await User.findOne({ position: 2 });
     await User.updateMany({}, { lastBet: 0 });
     if (!bbPlayer) {
