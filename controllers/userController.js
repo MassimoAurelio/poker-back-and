@@ -80,7 +80,9 @@ function clearFlop() {
 exports.dealFlopCards = async (req, res) => {
   try {
     clearFlop();
+
     const players = await User.find({ fold: false });
+    await User.updateMany({}, { $set: { makeTurn: false } });
     const flopCards = dealFlopCards();
 
     await User.updateMany({}, { lastBet: 0 });
@@ -129,7 +131,7 @@ exports.dealFlopCards = async (req, res) => {
 exports.findWinner = async (req, res) => {
   try {
     const players = await User.find({ fold: false, roundStage: "river" });
-
+    await User.updateMany({}, { $set: { makeTurn: false } });
     const communityCards = flopCards;
 
     console.log(communityCards);
@@ -182,6 +184,7 @@ exports.findWinner = async (req, res) => {
 exports.turn = async (req, res) => {
   try {
     const players = await User.find({ fold: false });
+    await User.updateMany({}, { $set: { makeTurn: false } });
     const flopCards = dealTernCard();
     const bbPlayer = await User.findOne({ position: 2 });
     await User.updateMany({}, { lastBet: 0 });
@@ -218,6 +221,7 @@ exports.turn = async (req, res) => {
 exports.river = async (req, res) => {
   try {
     const players = await User.find({ fold: false });
+    await User.updateMany({}, { $set: { makeTurn: false } });
     const flopCards = dealRiverCard();
     const bbPlayer = await User.findOne({ position: 2 });
     await User.updateMany({}, { lastBet: 0 });
@@ -408,6 +412,8 @@ exports.raise = async (req, res) => {
 
     const player = await User.findOne({ name });
 
+    await User.updateOne({ _id: player._id }, { $set: { makeTurn: true } });
+
     if (!player) {
       return res.status(404).json(`Игрок ${name} не найден`);
     }
@@ -459,6 +465,7 @@ exports.fold = async (req, res) => {
     const { name } = req.body;
 
     const player = await User.findOne({ name });
+    await User.updateOne({ _id: player._id }, { $set: { makeTurn: true } });
 
     if (!player) {
       return res.status(404).json({ message: "Игрок не найден" });
@@ -477,6 +484,7 @@ exports.check = async (req, res) => {
   try {
     const { name } = req.body;
     const player = await User.findOne({ name });
+    await User.updateOne({ _id: player._id }, { $set: { makeTurn: true } });
     if (!player) {
       return res.status(404).json({ message: `Игрок ${name} не найден` });
     }
@@ -496,8 +504,8 @@ exports.check = async (req, res) => {
 exports.coll = async (req, res) => {
   try {
     const { name } = req.body;
-
     const player = await User.findOne({ name });
+    await User.updateOne({ _id: player._id }, { $set: { makeTurn: true } });
     const players = await User.find({});
 
     if (!player) {
