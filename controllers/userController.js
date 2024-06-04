@@ -46,7 +46,6 @@ function dealCards(deck, players) {
   while (deck.length > 0) {
     deckWithoutPlayerCards.push(deck.pop());
   }
-  console.log(deckWithoutPlayerCards);
   return playerCards;
 }
 
@@ -344,7 +343,20 @@ exports.getPlayers = async (req, res) => {
 // Обновление позиций
 exports.updatePositions = async (req, res) => {
   try {
-    const players = await User.find({ fold: false });
+    const players = await User.find({});
+
+    await User.updateMany(
+      {},
+      {
+        $set: {
+          lastBet: 0,
+          preFlopLastBet: 0,
+          flopLastBet: 0,
+          turnLastBet: 0,
+          riverLastBet: 0,
+        },
+      }
+    );
 
     await User.updateOne({ position: 3 }, { $set: { currentPlayerId: false } });
 
@@ -460,6 +472,7 @@ exports.fold = async (req, res) => {
   }
 };
 
+//Чекаем
 exports.check = async (req, res) => {
   try {
     const { name } = req.body;
