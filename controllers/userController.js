@@ -1,4 +1,6 @@
 const User = require("../models/modelUser");
+const Room = require("../models/room");
+const RegUser = require("../models/regUser");
 const { Hand } = require("pokersolver");
 const suits = ["♥", "♠", "♦", "♣"];
 const values = [
@@ -48,6 +50,29 @@ function dealCards(deck, players) {
   }
   return playerCards;
 }
+
+// Раздача карт игрокам
+exports.deal = async (req, res) => {
+  try {
+    const players = await User.find({});
+    const deck = shuffleDeck();
+    const playerCards = dealCards(deck, players);
+
+    await Promise.all(
+      playerCards.map(async ({ playerId, cards }) => {
+        // Обновляем только поле cards для конкретного пользователя, добавляя новые карты
+        await User.updateOne(
+          { _id: playerId },
+          { $addToSet: { cards: { $each: cards } } } // Используем $addToSet для добавления новых карт без дублирования
+        );
+      })
+    );
+
+    res.status(200).json("Карты успешно разданы");
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
 
 // Функция для раздачи трех карт (флопа)
 function dealFlopCards() {
@@ -255,52 +280,46 @@ exports.river = async (req, res) => {
   }
 };
 
-// Раздача карт игрокам
-exports.deal = async (req, res) => {
-  try {
-    const players = await User.find({});
-    const deck = shuffleDeck();
-    const playerCards = dealCards(deck, players);
-    await Promise.all(
-      playerCards.map(async (playerCard) => {
-        await User.updateOne(
-          { _id: playerCard.playerId },
-          { $set: { cards: playerCard.cards } }
-        );
-      })
-    );
-    res.status(200).json("Карты успешно разданы");
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
-
 // Сесть за стол
 exports.join = async (req, res) => {
-  const { player, position, stack } = req.body;
+  const { player, position, stack, roomId } = req.body;
   try {
-    const existingPlayer = await User.findOne({ name: player });
+    const room = await Room.findById(roomId).populate("players");
+    if (!room) {
+      return res.status(404).json("Комната не найдена");
+    }
+
+    const existingPlayer = room.players.find((p) => p.name === player);
     if (existingPlayer) {
       return res.status(400).json("Такой игрок уже сидит за столом");
     }
 
-    const positionPlayer = await User.findOne({ position: position });
+    const positionPlayer = room.players.find((p) => p.position === position);
     if (positionPlayer) {
       return res.status(400).json("Это место на столе уже занято");
     }
 
-    const newPlayer = new User({ name: player, position, stack });
+    const newPlayer = new User({ name: player, position, stack: 1000 });
     await newPlayer.save();
+
+    room.players.push(newPlayer._id);
+    await room.save();
 
     if (position === 1) {
       await User.updateOne(
         { _id: newPlayer._id },
-        { $inc: { stack: -25 }, $set: { preFlopLastBet: 25, lastBet: 25 } }
+        {
+          $inc: { stack: -25 },
+          $set: { preFlopLastBet: 25, lastBet: 25, makeTurn: true },
+        }
       );
     } else if (position === 2) {
       await User.updateOne(
         { _id: newPlayer._id },
-        { $inc: { stack: -50 }, $set: { preFlopLastBet: 50, lastBet: 50 } }
+        {
+          $inc: { stack: -50 },
+          $set: { preFlopLastBet: 50, lastBet: 50, makeTurn: true },
+        }
       );
     }
     if (position === 3) {

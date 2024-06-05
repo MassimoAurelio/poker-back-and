@@ -15,7 +15,7 @@ router.post("/raise", userController.raise);
 router.post("/check", userController.check);
 router.post("/fold", userController.fold);
 router.post("/coll", userController.coll);
-router.get("/deal", userController.deal);
+router.post("/deal", userController.deal);
 router.post("/enterroom", authController.enterRoom);
 router.post("/createroom", authController.createRoom);
 router.get("/giveflop", userController.dealFlopCards);

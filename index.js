@@ -8,6 +8,8 @@ const http = require("http");
 const session = require("express-session");
 const cookieParser = require("cookie-parser");
 const User = require("../back-end/models/modelUser");
+const RegUser = require("../back-end/models/regUser");
+const jwt = require("jsonwebtoken");
 
 const PORT = process.env.PORT || 5000;
 
@@ -54,7 +56,7 @@ io.on("connection", (socket) => {
   socket.on("getPlayers", async () => {
     try {
       const players = await User.find({});
-      io.emit("playersData", players);
+      io.to(socket.id).emit("playersData", players);
     } catch (error) {
       console.error("Error fetching players:", error.message);
       socket.emit("error", {
