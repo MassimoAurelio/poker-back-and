@@ -10,10 +10,6 @@ const roomSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
-  players: [{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'RegUser',
-  }],
 });
 
 module.exports = mongoose.model("Room", roomSchema);

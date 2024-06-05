@@ -1,6 +1,4 @@
 const User = require("../models/modelUser");
-const Room = require("../models/room");
-const RegUser = require("../models/regUser");
 const { Hand } = require("pokersolver");
 const suits = ["♥", "♠", "♦", "♣"];
 const values = [
@@ -284,26 +282,18 @@ exports.river = async (req, res) => {
 exports.join = async (req, res) => {
   const { player, position, stack, roomId } = req.body;
   try {
-    const room = await Room.findById(roomId).populate("players");
-    if (!room) {
-      return res.status(404).json("Комната не найдена");
-    }
-
-    const existingPlayer = room.players.find((p) => p.name === player);
+    const existingPlayer = await User.findOne({ name: player });
     if (existingPlayer) {
       return res.status(400).json("Такой игрок уже сидит за столом");
     }
 
-    const positionPlayer = room.players.find((p) => p.position === position);
+    const positionPlayer = await User.findOne({ position: position });
     if (positionPlayer) {
       return res.status(400).json("Это место на столе уже занято");
     }
 
-    const newPlayer = new User({ name: player, position, stack: 1000 });
+    const newPlayer = new User({ name: player, position, stack });
     await newPlayer.save();
-
-    room.players.push(newPlayer._id);
-    await room.save();
 
     if (position === 1) {
       await User.updateOne(
