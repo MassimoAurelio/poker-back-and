@@ -1,4 +1,5 @@
 const User = require("../models/modelUser");
+const Room = require("../models/room");
 const { Hand } = require("pokersolver");
 const suits = ["♥", "♠", "♦", "♣"];
 const values = [
@@ -282,39 +283,69 @@ exports.river = async (req, res) => {
 exports.join = async (req, res) => {
   const { player, position, stack, roomId } = req.body;
   try {
-    const existingPlayer = await User.findOne({ name: player });
+    // Проверяем, не сидит ли игрок уже в другой комнате
+    const existingPlayerInOtherRoom = await User.findOne({
+      name: player,
+      roomId: { $ne: roomId },
+    });
+    if (existingPlayerInOtherRoom) {
+      // Удаляем игрока из предыдущей комнаты
+      await Room.updateOne(
+        { _id: existingPlayerInOtherRoom.roomId },
+        { $pull: { users: existingPlayerInOtherRoom._id } }
+      );
+      existingPlayerInOtherRoom.roomId = null;
+      await existingPlayerInOtherRoom.save();
+    }
+
+    // Проверяем, не сидит ли игрок уже за столом в текущей комнате
+    const existingPlayer = await User.findOne({ name: player, roomId: roomId });
     if (existingPlayer) {
       return res.status(400).json("Такой игрок уже сидит за столом");
     }
 
-    const positionPlayer = await User.findOne({ position: position });
+    // Проверяем, не занята ли позиция
+    const positionPlayer = await User.findOne({
+      position: position,
+      roomId: roomId,
+    });
     if (positionPlayer) {
       return res.status(400).json("Это место на столе уже занято");
     }
 
-    const newPlayer = new User({ name: player, position, stack });
+    // Создаем нового игрока
+    const newPlayer = new User({
+      name: player,
+      position,
+      stack,
+      roomId: roomId,
+    });
     await newPlayer.save();
 
-    if (position === 1) {
+    // Добавляем игрока в новую комнату
+    await Room.updateOne(
+      { _id: roomId },
+      { $addToSet: { users: newPlayer._id } }
+    );
+
+    // Логика ставок и обновления состояния игрока в зависимости от позиции
+    if (position === 1 || position === 2) {
       await User.updateOne(
         { _id: newPlayer._id },
         {
-          $inc: { stack: -25 },
-          $set: { preFlopLastBet: 25, lastBet: 25, makeTurn: true },
-        }
-      );
-    } else if (position === 2) {
-      await User.updateOne(
-        { _id: newPlayer._id },
-        {
-          $inc: { stack: -50 },
-          $set: { preFlopLastBet: 50, lastBet: 50, makeTurn: true },
+          $inc: { stack: -(25 * position) },
+          $set: {
+            preFlopLastBet: 25 * position,
+            lastBet: 25 * position,
+            makeTurn: true,
+          },
         }
       );
     }
+
     if (position === 3) {
       await User.updateMany(
-        { position: 3 },
+        { position: 3, roomId: roomId },
         { $set: { currentPlayerId: true } }
       );
     }
@@ -327,16 +358,28 @@ exports.join = async (req, res) => {
   }
 };
 
-//Встать из стола
+// Встать из стола
 exports.leave = async (req, res) => {
-  const player = req.body.position;
+  const { player, roomId } = req.body;
   try {
-    await User.findOneAndDelete({ position: player });
-    res.status(200).send(`Игрок ${player} покинул стол.`);
+    // Находим игрока по имени и roomId
+    const user = await User.findOne({ name: player, roomId: roomId });
+    if (!user) {
+      return res.status(404).json(`Игрок ${player} не найден в комнате ${roomId}.`);
+    }
+
+    // Удаляем игрока из комнаты
+    await Room.updateOne(
+      { _id: roomId },
+      { $pull: { users: user._id } }
+    );
+
+    // Удаляем игрока из базы данных
+    await User.findOneAndDelete({ _id: user._id });
+
+    res.status(200).send(`Игрок ${player} покинул стол в комнате ${roomId}.`);
   } catch (error) {
-    res
-      .status(500)
-      .json({ message: "Ошибка при удалении игрока", error: error.message });
+    res.status(500).json({ message: "Ошибка при удалении игрока", error: error.message });
   }
 };
 

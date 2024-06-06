@@ -1,6 +1,6 @@
 const mongoose = require("mongoose");
 
-const UserSchema = new mongoose.Schema(
+const userSchema = new mongoose.Schema(
   {
     name: {
       type: String,
@@ -10,6 +10,11 @@ const UserSchema = new mongoose.Schema(
     },
     position: {
       type: Number,
+    },
+    roomId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Room", 
+      required: true,
     },
     currentPlayerId: {
       type: Boolean,
@@ -60,6 +65,4 @@ const UserSchema = new mongoose.Schema(
   }
 );
 
-const User = mongoose.model("User", UserSchema);
-
-module.exports = User;
+module.exports = mongoose.model("User", userSchema);
