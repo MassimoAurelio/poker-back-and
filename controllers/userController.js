@@ -358,6 +358,7 @@ exports.join = async (req, res) => {
   }
 };
 
+
 // Встать из стола
 exports.leave = async (req, res) => {
   const { player, roomId } = req.body;
@@ -365,21 +366,22 @@ exports.leave = async (req, res) => {
     // Находим игрока по имени и roomId
     const user = await User.findOne({ name: player, roomId: roomId });
     if (!user) {
-      return res.status(404).json(`Игрок ${player} не найден в комнате ${roomId}.`);
+      return res
+        .status(404)
+        .json(`Игрок ${player} не найден в комнате ${roomId}.`);
     }
 
     // Удаляем игрока из комнаты
-    await Room.updateOne(
-      { _id: roomId },
-      { $pull: { users: user._id } }
-    );
+    await Room.updateOne({ _id: roomId }, { $pull: { users: user._id } });
 
     // Удаляем игрока из базы данных
     await User.findOneAndDelete({ _id: user._id });
 
     res.status(200).send(`Игрок ${player} покинул стол в комнате ${roomId}.`);
   } catch (error) {
-    res.status(500).json({ message: "Ошибка при удалении игрока", error: error.message });
+    res
+      .status(500)
+      .json({ message: "Ошибка при удалении игрока", error: error.message });
   }
 };
 
