@@ -56,17 +56,14 @@ exports.deal = async (req, res) => {
     const players = await User.find({});
     const deck = shuffleDeck();
     const playerCards = dealCards(deck, players);
-
     await Promise.all(
-      playerCards.map(async ({ playerId, cards }) => {
-        // Обновляем только поле cards для конкретного пользователя, добавляя новые карты
+      playerCards.map(async (playerCard) => {
         await User.updateOne(
-          { _id: playerId },
-          { $addToSet: { cards: { $each: cards } } } // Используем $addToSet для добавления новых карт без дублирования
+          { _id: playerCard.playerId },
+          { $set: { cards: playerCard.cards } }
         );
       })
     );
-
     res.status(200).json("Карты успешно разданы");
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -103,10 +100,9 @@ function clearFlop() {
 //Выдача флопа
 exports.dealFlopCards = async (req, res) => {
   try {
-    clearFlop();
-
     const players = await User.find({ fold: false });
     await User.updateMany({}, { $set: { makeTurn: false } });
+    clearFlop();
     const flopCards = dealFlopCards();
 
     await User.updateMany({}, { lastBet: 0 });
@@ -207,9 +203,8 @@ exports.findWinner = async (req, res) => {
 //Tern
 exports.turn = async (req, res) => {
   try {
-    const players = await User.find({ fold: false });
-    await User.updateMany({}, { $set: { makeTurn: false } });
     const flopCards = dealTernCard();
+    const players = await User.find({ fold: false });
     const bbPlayer = await User.findOne({ position: 2 });
     await User.updateMany({}, { lastBet: 0 });
     if (!bbPlayer) {
@@ -234,6 +229,7 @@ exports.turn = async (req, res) => {
       { name: minPlayer.name },
       { $set: { currentPlayerId: true } }
     );
+    await User.updateMany({}, { $set: { makeTurn: false } });
     await User.updateMany({}, { roundStage: "turn" });
     res.status(200).json({ flopCards });
   } catch (error) {
@@ -246,9 +242,10 @@ exports.river = async (req, res) => {
   try {
     const players = await User.find({ fold: false });
     await User.updateMany({}, { $set: { makeTurn: false } });
+    await User.updateMany({}, { lastBet: 0 });
     const flopCards = dealRiverCard();
     const bbPlayer = await User.findOne({ position: 2 });
-    await User.updateMany({}, { lastBet: 0 });
+
     if (!bbPlayer) {
       return res.status(404).json({ message: `Игрок ${bbPlayer} не найден` });
     }
@@ -357,7 +354,6 @@ exports.join = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
-
 
 // Встать из стола
 exports.leave = async (req, res) => {
