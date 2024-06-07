@@ -17,7 +17,7 @@ const values = [
   "K",
   "A",
 ];
-const flopCards = [];
+const tableCards = [];
 const deckWithoutPlayerCards = [];
 const playerCards = [];
 
@@ -73,28 +73,28 @@ exports.deal = async (req, res) => {
 // Функция для раздачи трех карт (флопа)
 function dealFlopCards() {
   for (let i = 0; i < 3; i++) {
-    flopCards.push(deckWithoutPlayerCards.pop());
+    tableCards.push(deckWithoutPlayerCards.pop());
   }
-  return flopCards;
+  return tableCards;
 }
 
 //Функция выдачи 1 карты на флоп
 function dealTernCard() {
   for (let i = 0; i < 1; i++) {
-    flopCards.push(deckWithoutPlayerCards.pop());
+    tableCards.push(deckWithoutPlayerCards.pop());
   }
-  return flopCards;
+  return tableCards;
 }
 //Функция выдачи 1 карты на флоп
 function dealRiverCard() {
   for (let i = 0; i < 1; i++) {
-    flopCards.push(deckWithoutPlayerCards.pop());
+    tableCards.push(deckWithoutPlayerCards.pop());
   }
-  return flopCards;
+  return tableCards;
 }
 
 function clearFlop() {
-  return (flopCards.length = 0);
+  return (tableCards.length = 0);
 }
 
 //Выдача флопа
@@ -147,15 +147,93 @@ exports.dealFlopCards = async (req, res) => {
   }
 };
 
+//Tern
+exports.turn = async (req, res) => {
+  try {
+    if (tableCards === 4) {
+      res.status(400).json("Карта уже раздана");
+    }
+    const turnCards = dealTernCard();
+
+    const players = await User.find({ fold: false });
+    const bbPlayer = await User.findOne({ position: 2 });
+    await User.updateMany({}, { lastBet: 0 });
+    if (!bbPlayer) {
+      return res.status(404).json({ message: `Игрок ${bbPlayer} не найден` });
+    }
+    const minPlayer = players.reduce((minPlayer, currentPlayer) => {
+      return currentPlayer.position < minPlayer.position
+        ? currentPlayer
+        : minPlayer;
+    });
+    const lastCurrentPlayerId = players.find((player) => {
+      return player.currentPlayerId === true;
+    });
+    await User.updateOne({ _id: bbPlayer._id }, { flopEnd: false });
+
+    await User.updateOne(
+      { name: lastCurrentPlayerId.name },
+      { $set: { currentPlayerId: false } }
+    );
+
+    await User.updateOne(
+      { name: minPlayer.name },
+      { $set: { currentPlayerId: true } }
+    );
+    await User.updateMany({}, { $set: { makeTurn: false } });
+    await User.updateMany({}, { roundStage: "turn" });
+    console.log(JSON.stringify(turnCards));
+    res.status(200).json({ turnCards });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+//river
+exports.river = async (req, res) => {
+  try {
+    const players = await User.find({ fold: false });
+    await User.updateMany({}, { $set: { makeTurn: false } });
+    await User.updateMany({}, { lastBet: 0 });
+    const riverCards = dealRiverCard();
+    const bbPlayer = await User.findOne({ position: 2 });
+
+    if (!bbPlayer) {
+      return res.status(404).json({ message: `Игрок ${bbPlayer} не найден` });
+    }
+    const minPlayer = players.reduce((minPlayer, currentPlayer) => {
+      return currentPlayer.position < minPlayer.position
+        ? currentPlayer
+        : minPlayer;
+    });
+    const lastCurrentPlayerId = players.find((player) => {
+      return player.currentPlayerId === true;
+    });
+
+    await User.updateOne(
+      { name: lastCurrentPlayerId.name },
+      { $set: { currentPlayerId: false } }
+    );
+
+    await User.updateOne(
+      { name: minPlayer.name },
+      { $set: { currentPlayerId: true } }
+    );
+    await User.updateOne({ _id: bbPlayer._id }, { ternEnd: false });
+
+    await User.updateMany({}, { roundStage: "river" });
+    res.status(200).json({ riverCards });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 // Определение победителя
 exports.findWinner = async (req, res) => {
   try {
     const players = await User.find({ fold: false, roundStage: "river" });
     await User.updateMany({}, { $set: { makeTurn: false } });
     const communityCards = flopCards;
-
-    console.log(communityCards);
-
     const hands = players.map((player) => {
       const playerCards = player.cards.map(
         (card) => `${card.value}${card.suit}`
@@ -195,82 +273,6 @@ exports.findWinner = async (req, res) => {
     }
     await User.updateMany({}, { lastBet: 0 });
     res.status(200).json({ winners, winnerSum });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
-
-//Tern
-exports.turn = async (req, res) => {
-  try {
-    const flopCards = dealTernCard();
-    const players = await User.find({ fold: false });
-    const bbPlayer = await User.findOne({ position: 2 });
-    await User.updateMany({}, { lastBet: 0 });
-    if (!bbPlayer) {
-      return res.status(404).json({ message: `Игрок ${bbPlayer} не найден` });
-    }
-    const minPlayer = players.reduce((minPlayer, currentPlayer) => {
-      return currentPlayer.position < minPlayer.position
-        ? currentPlayer
-        : minPlayer;
-    });
-    const lastCurrentPlayerId = players.find((player) => {
-      return player.currentPlayerId === true;
-    });
-    await User.updateOne({ _id: bbPlayer._id }, { flopEnd: false });
-
-    await User.updateOne(
-      { name: lastCurrentPlayerId.name },
-      { $set: { currentPlayerId: false } }
-    );
-
-    await User.updateOne(
-      { name: minPlayer.name },
-      { $set: { currentPlayerId: true } }
-    );
-    await User.updateMany({}, { $set: { makeTurn: false } });
-    await User.updateMany({}, { roundStage: "turn" });
-    res.status(200).json({ flopCards });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
-
-//river
-exports.river = async (req, res) => {
-  try {
-    const players = await User.find({ fold: false });
-    await User.updateMany({}, { $set: { makeTurn: false } });
-    await User.updateMany({}, { lastBet: 0 });
-    const flopCards = dealRiverCard();
-    const bbPlayer = await User.findOne({ position: 2 });
-
-    if (!bbPlayer) {
-      return res.status(404).json({ message: `Игрок ${bbPlayer} не найден` });
-    }
-    const minPlayer = players.reduce((minPlayer, currentPlayer) => {
-      return currentPlayer.position < minPlayer.position
-        ? currentPlayer
-        : minPlayer;
-    });
-    const lastCurrentPlayerId = players.find((player) => {
-      return player.currentPlayerId === true;
-    });
-
-    await User.updateOne(
-      { name: lastCurrentPlayerId.name },
-      { $set: { currentPlayerId: false } }
-    );
-
-    await User.updateOne(
-      { name: minPlayer.name },
-      { $set: { currentPlayerId: true } }
-    );
-    await User.updateOne({ _id: bbPlayer._id }, { ternEnd: false });
-
-    await User.updateMany({}, { roundStage: "river" });
-    res.status(200).json({ flopCards });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
