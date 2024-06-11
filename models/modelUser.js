@@ -48,6 +48,10 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    startRound:{
+      type:Boolean,
+      default:false
+    },
     cards: [
       {
         value: String,
@@ -59,6 +63,7 @@ const userSchema = new mongoose.Schema(
       enum: ["preflop", "flop", "turn", "river"],
       default: "preflop",
     },
+  
   },
   {
     timestamps: true,

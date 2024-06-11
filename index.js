@@ -11,7 +11,6 @@ const User = require("../back-end/models/modelUser");
 
 const PORT = process.env.PORT || 5000;
 
-// Создание экземпляров Express и Socket.IO
 const app = express();
 const server = http.createServer(app);
 const io = socketio(server, {
@@ -21,7 +20,6 @@ const io = socketio(server, {
   },
 });
 
-// Настройка middleware
 app.use(express.json());
 app.use(cors({ origin: "http://localhost:3000" }));
 app.use(cookieParser());
@@ -65,6 +63,10 @@ const values = [
   "A",
 ];
 
+const tableCards = [];
+const deckWithoutPlayerCards = [];
+const playerCards = [];
+
 // Функция для перемешивания карт в колоде
 function shuffleDeck() {
   const deck = [];
@@ -83,8 +85,6 @@ function shuffleDeck() {
 
 // Функция для раздачи двух карт каждому игроку
 function dealCards(deck, players) {
-  let playerCards = [];
-  let deckWithoutPlayerCards = [];
   for (let i = 0; i < players.length; i++) {
     const cards = [deck.pop(), deck.pop()];
     playerCards.push({ playerId: players[i]._id, cards });
@@ -93,6 +93,18 @@ function dealCards(deck, players) {
     deckWithoutPlayerCards.push(deck.pop());
   }
   return playerCards;
+}
+
+function clearFlop() {
+  return (tableCards.length = 0);
+}
+
+// Функция для раздачи трех карт (флопа)
+function dealFlopCards() {
+  for (let i = 0; i < 3; i++) {
+    tableCards.push(deckWithoutPlayerCards.pop());
+  }
+  return tableCards;
 }
 
 io.on("connection", (socket) => {
@@ -110,33 +122,47 @@ io.on("connection", (socket) => {
       });
     }
   });
+
   socket.on("requestDeal", async ({ roomId }) => {
     try {
-      console.log(`Requesting deal for room: ${roomId}`); // Логирование начала запроса на раздачу
-
       const players = await User.find({ roomId: roomId });
-      console.log(`Found players: ${JSON.stringify(players)}`); // Логирование найденных игроков
-
       const deck = shuffleDeck();
-      console.log("Shuffled deck:", deck); // Логирование результата шаффлинга колоды
 
       const playerCards = dealCards(deck, players);
-      console.log("Dealt cards:", JSON.stringify(playerCards)); // Логирование разданной колоды
 
-      // Отправляем данные о картах каждому игроку через сокет
-      playerCards.forEach(({ playerId, cards }) => {
-        console.log(`Sending cards to player: ${playerId}`); // Логирование отправки карт игроку
+      for (const { playerId, cards } of playerCards) {
+        await User.updateOne({ _id: playerId }, { $set: { cards: cards } });
         socket.to(playerId).emit("dealCards", cards);
-      });
+      }
 
-      // Также можем отправить общее сообщение всем клиентам, что раздача прошла успешно
-      console.log(`Broadcasting deal success to room: ${roomId}`); // Логирование подготовки к широковещательной рассылке
+      console.log(`Broadcasting deal success to room ${roomId}`);
       socket.broadcast.to(roomId).emit("dealSuccess", "Карты успешно разданы");
     } catch (error) {
       console.error("Error during card dealing:", error.message);
-      // Отправляем ошибку клиенту, если что-то пошло не так
       socket.emit("dealError", {
         message: "Ошибка при раздаче карт",
+        error: error.message,
+      });
+    }
+  });
+
+  socket.on("dealFlop", async ({ roomId }) => {
+    try {
+      const players = await User.find({ roomId: roomId, fold: false });
+      await User.updateMany({}, { $set: { makeTurn: false } });
+      clearFlop();
+      const flopCards = dealFlopCards();
+      console.log(JSON.stringify(flopCards));
+      await User.updateMany({}, { lastBet: 0, roundStage: "flop" });
+
+      const dataToSend = {
+        flop: { tableCards: flopCards },
+        players: players,
+      };
+      io.to(roomId).emit("dealFlop", dataToSend);
+    } catch (error) {
+      socket.emit("dealError", {
+        message: "Ошибка при выдаче флопа",
         error: error.message,
       });
     }
