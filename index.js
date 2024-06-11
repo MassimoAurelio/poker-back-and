@@ -101,10 +101,8 @@ function clearFlop() {
 
 // Функция для раздачи трех карт (флопа)
 function dealFlopCards() {
-  for (let i = 0; i < 3; i++) {
-    tableCards.push(deckWithoutPlayerCards.pop());
-  }
-  return tableCards;
+  // Пример функции для раздачи карт
+  return ["Card1", "Card2", "Card3"]; // замените на вашу логику раздачи карт
 }
 
 io.on("connection", (socket) => {
@@ -152,21 +150,24 @@ io.on("connection", (socket) => {
       await User.updateMany({}, { $set: { makeTurn: false } });
       clearFlop();
       const flopCards = dealFlopCards();
-      console.log(JSON.stringify(flopCards));
+      console.log(flopCards);
       await User.updateMany({}, { lastBet: 0, roundStage: "flop" });
 
       const dataToSend = {
         flop: { tableCards: flopCards },
         players: players,
       };
-      io.to(roomId).emit("dealFlop", dataToSend);
+      socket.broadcast.to(roomId).emit("dealFlop", dataToSend);
     } catch (error) {
+      console.error("Error in dealFlop event:", error);
       socket.emit("dealError", {
         message: "Ошибка при выдаче флопа",
         error: error.message,
       });
     }
   });
+  // Отправляем сообщение "Hello" клиенту
+  socket.emit("message", "Hello");
 });
 
 module.exports = io;
