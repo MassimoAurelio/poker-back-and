@@ -151,13 +151,13 @@ io.on("connection", (socket) => {
       await User.updateMany({}, { $set: { makeTurn: false } });
       clearFlop();
       const flopCards = dealFlopCards();
-      console.log(flopCards);
+      console.log(`ВЫЗЫВАЕМ ФЛОП: ${JSON.stringify(flopCards)}`);
       await User.updateMany({}, { lastBet: 0, roundStage: "flop" });
 
       const dataToSend = {
         flop: { tableCards: flopCards },
       };
-      socket.emit("dealFlop", dataToSend);
+      io.emit("dealFlop", dataToSend);
     } catch (error) {
       console.error("Error in dealFlop event:", error);
       socket.emit("dealError", {
