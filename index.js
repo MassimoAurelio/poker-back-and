@@ -8,6 +8,7 @@ const http = require("http");
 const session = require("express-session");
 const cookieParser = require("cookie-parser");
 const User = require("../back-end/models/modelUser");
+const Room = require("../back-end/models/room");
 
 const PORT = process.env.PORT || 5000;
 
@@ -101,10 +102,11 @@ function clearFlop() {
 
 // Функция для раздачи трех карт (флопа)
 function dealFlopCards() {
-  // Пример функции для раздачи карт
-  return ["Card1", "Card2", "Card3"]; // замените на вашу логику раздачи карт
+  for (let i = 0; i < 3; i++) {
+    tableCards.push(deckWithoutPlayerCards.pop());
+  }
+  return tableCards;
 }
-
 io.on("connection", (socket) => {
   console.log("New client connected");
 
@@ -144,9 +146,8 @@ io.on("connection", (socket) => {
     }
   });
 
-  socket.on("dealFlop", async ({ roomId }) => {
+  socket.on("dealFlop", async () => {
     try {
-      const players = await User.find({ roomId: roomId, fold: false });
       await User.updateMany({}, { $set: { makeTurn: false } });
       clearFlop();
       const flopCards = dealFlopCards();
@@ -155,9 +156,8 @@ io.on("connection", (socket) => {
 
       const dataToSend = {
         flop: { tableCards: flopCards },
-        players: players,
       };
-      socket.broadcast.to(roomId).emit("dealFlop", dataToSend);
+      socket.emit("dealFlop", dataToSend);
     } catch (error) {
       console.error("Error in dealFlop event:", error);
       socket.emit("dealError", {
@@ -166,8 +166,6 @@ io.on("connection", (socket) => {
       });
     }
   });
-  // Отправляем сообщение "Hello" клиенту
-  socket.emit("message", "Hello");
 });
 
 module.exports = io;
