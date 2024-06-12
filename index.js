@@ -148,16 +148,51 @@ io.on("connection", (socket) => {
 
   socket.on("dealFlop", async () => {
     try {
+      const players = await User.find({ fold: false });
       await User.updateMany({}, { $set: { makeTurn: false } });
       clearFlop();
       const flopCards = dealFlopCards();
       console.log(`ВЫЗЫВАЕМ ФЛОП: ${JSON.stringify(flopCards)}`);
-      await User.updateMany({}, { lastBet: 0, roundStage: "flop" });
+      await User.updateMany({}, { lastBet: 0 });
+
+      const bbPlayer = await User.findOne({ position: 2 });
+      if (!bbPlayer) {
+        return socket.emit("dealError", {
+          message: "Игрок на большом блаинде не найден",
+        });
+      }
+
+      const minPlayer = players.reduce((minPlayer, currentPlayer) => {
+        return currentPlayer.position < minPlayer.position
+          ? currentPlayer
+          : minPlayer;
+      });
+
+      const lastCurrentPlayerId = players.find((player) => {
+        return player.currentPlayerId === true;
+      });
+
+      if (!lastCurrentPlayerId) {
+        return socket.emit("dealError", {
+          message: "Последний игрок не найден",
+        });
+      }
+
+      await User.updateOne({ _id: bbPlayer._id }, { preflopEnd: false });
+      await User.updateOne(
+        { _id: lastCurrentPlayerId._id },
+        { $set: { currentPlayerId: false } }
+      );
+      await User.updateOne(
+        { _id: minPlayer._id },
+        { $set: { currentPlayerId: true } }
+      );
 
       const dataToSend = {
         flop: { tableCards: flopCards },
       };
-      io.emit("dealFlop", dataToSend);
+      await User.updateMany({}, { roundStage: "flop" });
+      socket.emit("dealFlop", dataToSend);
     } catch (error) {
       console.error("Error in dealFlop event:", error);
       socket.emit("dealError", {
