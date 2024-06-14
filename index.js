@@ -5,7 +5,7 @@ const cors = require("cors");
 const userRoutes = require("./routes/userRoutes");
 const session = require("express-session");
 const cookieParser = require("cookie-parser");
-const initializeSocket = require("./controllers/socketHandlers");
+const initializeSocket = require("./controllers/pokerActionSockets");
 require("dotenv").config();
 
 const PORT = process.env.PORT || 5000;
