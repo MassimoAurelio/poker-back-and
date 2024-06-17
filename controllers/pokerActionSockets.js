@@ -116,8 +116,7 @@ function initializeSocket(server) {
           await User.updateOne({ _id: playerId }, { $set: { cards: cards } });
           socket.to(playerId).emit("dealCards", cards);
         }
-
-        io.broadcast.to(roomId).emit("dealSuccess", "Карты успешно разданы");
+        io.to(roomId).emit("dealSuccess", "Карты успешно разданы");
       } catch (error) {
         console.error("Error during card dealing:", error.message);
         socket.emit("dealError", {
