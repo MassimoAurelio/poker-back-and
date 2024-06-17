@@ -103,7 +103,9 @@ function initializeSocket(server) {
     // Раздача карт каждому игроку
     socket.on("requestDeal", async ({ roomId }) => {
       try {
-        console.log(`Deal requested for room ${roomId}`);
+        console.log(
+          `Deal requested for room ${roomId}, socket id: ${socket.id}`
+        );
         const players = await User.find({ roomId: roomId });
 
         const deck = shuffleDeck();
@@ -114,6 +116,7 @@ function initializeSocket(server) {
           await User.updateOne({ _id: playerId }, { $set: { cards: cards } });
           socket.to(playerId).emit("dealCards", cards);
         }
+
         io.broadcast.to(roomId).emit("dealSuccess", "Карты успешно разданы");
       } catch (error) {
         console.error("Error during card dealing:", error.message);
@@ -342,7 +345,7 @@ function initializeSocket(server) {
         }
         await User.updateMany({}, { lastBet: 0 });
         console.log(`Победитель ${(winners, winnerSum)}`);
-        io.emit("findWinner", { winners, winnerSum });
+        socket.emit("findWinner", { winners, winnerSum });
       } catch (error) {
         console.error("Error in FindWinner event", error);
         socket.emit("dealError", {
@@ -356,6 +359,11 @@ function initializeSocket(server) {
     socket.on("updatePositions", async () => {
       try {
         const players = await User.find({});
+        if (players.roundStage === "preflop") {
+          return socket.emit("dealError", {
+            message: "Новый раунд уже начат",
+          });
+        }
 
         await User.updateMany(
           {},
