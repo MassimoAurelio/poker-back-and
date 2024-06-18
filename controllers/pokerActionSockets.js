@@ -356,11 +356,6 @@ function initializeSocket(server) {
     socket.on("updatePositions", async () => {
       try {
         const players = await User.find({});
-        if (players.roundStage === "preflop") {
-          return socket.emit("dealError", {
-            message: "Игроки уже сменили позиции",
-          });
-        }
 
         // Сброс значений для всех пользователей
         await User.updateMany(
@@ -374,9 +369,15 @@ function initializeSocket(server) {
               riverLastBet: 0,
               roundStage: "preflop",
               makeTurn: false,
+              cards: [],
             },
           }
         );
+        if (players.roundStage === "preflop") {
+          return socket.emit("dealError", {
+            message: "Игроки уже сменили позиции",
+          });
+        }
 
         // Найти игрока с самой высокой позицией
         let highPositionPlayer = players.reduce((a, b) => {
