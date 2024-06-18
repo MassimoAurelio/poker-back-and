@@ -105,6 +105,16 @@ function initializeSocket(server) {
       try {
         const players = await User.find({ roomId: roomId });
 
+        const emptyCards = players.every((player) => {
+          return player.cards.length === 0;
+        });
+
+        if (!emptyCards) {
+          return socket.emit("dealError", {
+            message: "Карты уже разданы",
+          });
+        }
+
         const deck = shuffleDeck();
 
         const playerCards = dealCards(deck, players);
@@ -113,7 +123,11 @@ function initializeSocket(server) {
           await User.updateOne({ _id: playerId }, { $set: { cards: cards } });
           socket.to(playerId).emit("dealCards", cards);
         }
-        console.log(`Broadcasting deal success to room ${roomId}`);
+        console.log(
+          `Broadcasting deal success to room ${roomId}, ${JSON.stringify(
+            playerCards
+          )}`
+        );
         io.to(roomId).emit("dealSuccess", "Карты успешно разданы");
       } catch (error) {
         console.error("Error during card dealing:", error.message);
