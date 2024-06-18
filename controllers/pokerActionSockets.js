@@ -352,10 +352,15 @@ function initializeSocket(server) {
       }
     });
 
-    //Обновляем позиции игроков перед следующим раундом
+    // Обновляем позиции игроков перед следующим раундом
     socket.on("updatePositions", async () => {
       try {
         const players = await User.find({});
+        if (players.roundStage === "preflop") {
+          return socket.emit("dealError", {
+            message: "Игроки уже сменили позиции",
+          });
+        }
 
         // Сброс значений для всех пользователей
         await User.updateMany(
@@ -382,9 +387,9 @@ function initializeSocket(server) {
         let updatedPositions = {};
         for (let player of players) {
           updatedPositions[player._id] =
-            player.position === 1
-              ? highPositionPlayer.position
-              : player.position - 1;
+            player.position === highPositionPlayer.position
+              ? 1
+              : player.position + 1;
         }
 
         // Обновить позиции пользователей за один запрос
@@ -392,12 +397,9 @@ function initializeSocket(server) {
           await User.updateOne({ _id: id }, { position: newPosition });
         }
 
-        // Обновить currentPlayerId для позиции 3
-        await User.updateOne(
-          { position: 3 },
-          { $set: { currentPlayerId: false } }
-        );
+        await User.updateMany({}, { $set: { currentPlayerId: false } });
 
+        // Обновить currentPlayerId для позиции 1
         await User.updateOne(
           { position: 3 },
           { $set: { currentPlayerId: true } }
@@ -413,7 +415,7 @@ function initializeSocket(server) {
 
         console.log("Начинаем новый раунд");
         clearFlop();
-        socket.emit("updatePositions", "Позиции игроков успешно обновлены.");
+        io.emit("updatePositions", "Позиции игроков успешно обновлены.");
       } catch (error) {
         console.error(error);
         socket.emit("dealError", {
