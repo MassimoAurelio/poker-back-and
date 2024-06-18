@@ -356,6 +356,15 @@ function initializeSocket(server) {
     socket.on("updatePositions", async () => {
       try {
         const players = await User.find({});
+        const preflopPlayer = players.every(
+          (player) => player.roundStage === "preflop"
+        );
+
+        if (preflopPlayer) {
+          return socket.emit("dealError", {
+            message: "Игроки уже сменили позиции",
+          });
+        }
 
         // Сброс значений для всех пользователей
         await User.updateMany(
@@ -373,11 +382,6 @@ function initializeSocket(server) {
             },
           }
         );
-        if (players.roundStage === "preflop") {
-          return socket.emit("dealError", {
-            message: "Игроки уже сменили позиции",
-          });
-        }
 
         // Найти игрока с самой высокой позицией
         let highPositionPlayer = players.reduce((a, b) => {
@@ -422,6 +426,18 @@ function initializeSocket(server) {
         socket.emit("dealError", {
           message: "Ошибка при смене позиций игроков",
           error: error.message,
+        });
+      }
+    });
+    socket.on("resetFlop", async () => {
+      try {
+        tableCards = [];
+        console.log("Очищаем флоп");
+        io.emit("updateTableCards", tableCards);
+      } catch (error) {
+        console.error(error);
+        socket.emit("dealError", {
+          message: "Ошибка при очистке карт стола",
         });
       }
     });
