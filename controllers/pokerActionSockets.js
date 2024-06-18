@@ -352,11 +352,12 @@ function initializeSocket(server) {
       }
     });
 
-    //Обновлеяем позиции игроков перед следующим раундом
+    //Обновляем позиции игроков перед следующим раундом
     socket.on("updatePositions", async () => {
       try {
         const players = await User.find({});
 
+        // Сброс значений для всех пользователей
         await User.updateMany(
           {},
           {
@@ -372,30 +373,39 @@ function initializeSocket(server) {
           }
         );
 
+        // Найти игрока с самой высокой позицией
+        let highPositionPlayer = players.reduce((a, b) => {
+          return a.position > b.position ? a : b;
+        }, players[0]);
+
+        // Создать новый объект с обновленными позициями
+        let updatedPositions = {};
+        for (let player of players) {
+          updatedPositions[player._id] =
+            player.position === 1
+              ? highPositionPlayer.position
+              : player.position - 1;
+        }
+
+        // Обновить позиции пользователей за один запрос
+        for (let [id, newPosition] of Object.entries(updatedPositions)) {
+          await User.updateOne({ _id: id }, { position: newPosition });
+        }
+
+        // Обновить currentPlayerId для позиции 3
         await User.updateOne(
           { position: 3 },
           { $set: { currentPlayerId: false } }
         );
 
-        let highPositionPlayer = players.reduce((a, b) => {
-          return a.position > b.position ? a : b;
-        }, players[0]);
-
-        for (let player of players) {
-          player.position =
-            player.position === 1
-              ? highPositionPlayer.position
-              : player.position - 1;
-          await player.save();
-        }
-
         await User.updateOne(
           { position: 3 },
           { $set: { currentPlayerId: true } }
         );
+
         const bbPlayer = await User.findOne({ position: 2 });
         if (!bbPlayer) {
-          return socket.emit("dealError", `Игрок ${bbPlayer} не найден`);
+          return socket.emit("dealError", `Игрок не найден на позиции 2`);
         }
         await User.updateOne({ _id: bbPlayer._id }, { riverEnd: false });
         await User.updateOne({ position: 1 }, { $inc: { stack: -25 } });
