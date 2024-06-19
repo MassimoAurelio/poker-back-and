@@ -27,7 +27,7 @@ function initializeSocket(server) {
     "A",
   ];
 
-  const tableCards = [];
+  let tableCards = [];
   const deckWithoutPlayerCards = [];
   const playerCards = [];
 
@@ -366,6 +366,60 @@ function initializeSocket(server) {
       }
     });
 
+    //Определение победителя
+    socket.on("findWinner", async () => {
+      try {
+        const players = await User.find({ fold: false, roundStage: "river" });
+        await User.updateMany({}, { $set: { makeTurn: false } });
+        const communityCards = tableCards;
+        const hands = players.map((player) => {
+          const playerCards = player.cards.map(
+            (card) => `${card.value}${card.suit}`
+          );
+          const allCards = [
+            ...playerCards,
+            ...communityCards.map((card) => `${card.value}${card.suit}`),
+          ];
+          return {
+            player: player.name,
+            hand: Hand.solve(allCards),
+          };
+        });
+
+        const winningHand = Hand.winners(hands.map((h) => h.hand));
+        let winnerSum = 0;
+
+        const playersInRound = await User.find({});
+        playersInRound.forEach((item) => {
+          winnerSum +=
+            item.preFlopLastBet +
+            item.flopLastBet +
+            item.turnLastBet +
+            item.riverLastBet;
+        });
+        const winners = hands
+          .filter((h) => winningHand.includes(h.hand))
+          .map((h) => h.player);
+
+        for (const winner of winners) {
+          const winnerPlayer = await User.findOne({ name: winner });
+          if (winnerPlayer) {
+            winnerPlayer.stack += winnerSum;
+            await winnerPlayer.save();
+          }
+        }
+        await User.updateMany({}, { lastBet: 0 });
+        console.log(`Победитель ${(winners, winnerSum)}`);
+        io.emit("findWinner", { winners, winnerSum });
+      } catch (error) {
+        console.error("Error in FindWinner event", error);
+        socket.emit("dealError", {
+          message: "Ошибка при поиске победителя",
+          error: error.message,
+        });
+      }
+    });
+
     // Обновляем позиции игроков перед следующим раундом
     socket.on("updatePositions", async () => {
       try {
@@ -416,6 +470,13 @@ function initializeSocket(server) {
           await User.updateOne({ _id: id }, { position: newPosition });
         }
 
+        await User.updateOne({ position: 1 }, { $inc: { stack: -25 } }); // Вычитаем 25 из stack первого игрока
+        await User.updateOne({ position: 2 }, { $inc: { stack: -50 } }); // Вычитаем 50 из stack второго игрока
+
+        // Сохраняем вычеты в lastBet
+        await User.updateOne({ position: 1 }, { $set: { lastBet: 25 } }); // Сохраняем 25 в lastBet первого игрока
+        await User.updateOne({ position: 2 }, { $set: { lastBet: 50 } }); // Сохраняем 50 в lastBet второго игрока
+
         await User.updateMany({}, { $set: { currentPlayerId: false } });
 
         // Обновить currentPlayerId для позиции 1
@@ -423,14 +484,6 @@ function initializeSocket(server) {
           { position: 3 },
           { $set: { currentPlayerId: true } }
         );
-
-        const bbPlayer = await User.findOne({ position: 2 });
-        if (!bbPlayer) {
-          return socket.emit("dealError", `Игрок не найден на позиции 2`);
-        }
-        await User.updateOne({ _id: bbPlayer._id }, { riverEnd: false });
-        await User.updateOne({ position: 1 }, { $inc: { stack: -25 } });
-        await User.updateOne({ position: 2 }, { $inc: { stack: -50 } });
 
         console.log("Начинаем новый раунд");
         clearFlop();
@@ -443,9 +496,10 @@ function initializeSocket(server) {
         });
       }
     });
+
     socket.on("resetFlop", async () => {
       try {
-        tableCards = [];
+        tableCards.length = 0;
         console.log("Очищаем флоп");
         io.emit("updateTableCards", tableCards);
       } catch (error) {
