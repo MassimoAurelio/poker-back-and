@@ -447,7 +447,7 @@ function initializeSocket(server) {
           await lastPlayer.save();
         }
 
-        io.emit("findWinner", { lastPlayer, winnerSum });
+        io.emit("remainineOneWinner", { lastPlayer, winnerSum });
       } catch (error) {
         console.error(error);
         socket.emit("dealError", {
