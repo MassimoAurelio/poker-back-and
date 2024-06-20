@@ -371,6 +371,7 @@ function initializeSocket(server) {
       try {
         const players = await User.find({ fold: false, roundStage: "river" });
         await User.updateMany({}, { $set: { makeTurn: false } });
+
         const communityCards = tableCards;
         const hands = players.map((player) => {
           const playerCards = player.cards.map(
@@ -397,6 +398,7 @@ function initializeSocket(server) {
             item.turnLastBet +
             item.riverLastBet;
         });
+
         const winners = hands
           .filter((h) => winningHand.includes(h.hand))
           .map((h) => h.player);
@@ -408,13 +410,48 @@ function initializeSocket(server) {
             await winnerPlayer.save();
           }
         }
-        await User.updateMany({}, { lastBet: 0 });
         console.log(`Победитель ${(winners, winnerSum)}`);
         io.emit("findWinner", { winners, winnerSum });
       } catch (error) {
         console.error("Error in FindWinner event", error);
         socket.emit("dealError", {
           message: "Ошибка при поиске победителя",
+          error: error.message,
+        });
+      }
+    });
+
+    //Определяем победителя если он остался последним
+    socket.on("remainineOneWinner", async () => {
+      try {
+        const players = await User.find({ fold: false });
+        await User.updateMany({}, { $set: { makeTurn: false } });
+
+        let winnerSum = 0;
+        const playersInRound = await User.find({});
+        playersInRound.forEach((item) => {
+          winnerSum +=
+            item.preFlopLastBet +
+            item.flopLastBet +
+            item.turnLastBet +
+            item.riverLastBet;
+        });
+
+        let lastPlayer = null;
+        if (players.length === 1) {
+          lastPlayer = players[0];
+        }
+
+        if (lastPlayer) {
+          lastPlayer.stack += winnerSum;
+          await lastPlayer.save();
+        }
+
+        io.emit("findWinner", { lastPlayer, winnerSum });
+      } catch (error) {
+        console.error(error);
+        socket.emit("dealError", {
+          message: "Ошибка",
           error: error.message,
         });
       }
@@ -473,8 +510,14 @@ function initializeSocket(server) {
 
         await User.updateOne({ position: 1 }, { $inc: { stack: -25 } });
         await User.updateOne({ position: 2 }, { $inc: { stack: -50 } });
-        await User.updateOne({ position: 1 }, { $set: { lastBet: 25 } });
-        await User.updateOne({ position: 2 }, { $set: { lastBet: 50 } });
+        await User.updateOne(
+          { position: 1 },
+          { $set: { lastBet: 25, preFlopLastBet: 25 } }
+        );
+        await User.updateOne(
+          { position: 2 },
+          { $set: { lastBet: 50, preFlopLastBet: 50 } }
+        );
 
         await User.updateMany({}, { $set: { currentPlayerId: false } });
 
