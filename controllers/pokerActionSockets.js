@@ -445,6 +445,7 @@ function initializeSocket(server) {
               turnLastBet: 0,
               riverLastBet: 0,
               roundStage: "preflop",
+              fold: false,
               makeTurn: false,
               cards: [],
             },
@@ -470,16 +471,13 @@ function initializeSocket(server) {
           await User.updateOne({ _id: id }, { position: newPosition });
         }
 
-        await User.updateOne({ position: 1 }, { $inc: { stack: -25 } }); // Вычитаем 25 из stack первого игрока
-        await User.updateOne({ position: 2 }, { $inc: { stack: -50 } }); // Вычитаем 50 из stack второго игрока
-
-        // Сохраняем вычеты в lastBet
-        await User.updateOne({ position: 1 }, { $set: { lastBet: 25 } }); // Сохраняем 25 в lastBet первого игрока
-        await User.updateOne({ position: 2 }, { $set: { lastBet: 50 } }); // Сохраняем 50 в lastBet второго игрока
+        await User.updateOne({ position: 1 }, { $inc: { stack: -25 } });
+        await User.updateOne({ position: 2 }, { $inc: { stack: -50 } });
+        await User.updateOne({ position: 1 }, { $set: { lastBet: 25 } });
+        await User.updateOne({ position: 2 }, { $set: { lastBet: 50 } });
 
         await User.updateMany({}, { $set: { currentPlayerId: false } });
 
-        // Обновить currentPlayerId для позиции 1
         await User.updateOne(
           { position: 3 },
           { $set: { currentPlayerId: true } }
@@ -501,7 +499,7 @@ function initializeSocket(server) {
       try {
         tableCards.length = 0;
         console.log("Очищаем флоп");
-        io.emit("updateTableCards", tableCards);
+        io.emit("resetFlop", tableCards);
       } catch (error) {
         console.error(error);
         socket.emit("dealError", {
