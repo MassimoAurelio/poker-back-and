@@ -461,15 +461,6 @@ function initializeSocket(server) {
     socket.on("updatePositions", async () => {
       try {
         const players = await User.find({});
-        const preflopPlayer = players.every(
-          (player) => player.roundStage === "preflop"
-        );
-
-        if (preflopPlayer) {
-          return socket.emit("dealError", {
-            message: "Игроки уже сменили позиции",
-          });
-        }
 
         // Сброс значений для всех пользователей
         await User.updateMany(
@@ -540,7 +531,15 @@ function initializeSocket(server) {
 
     socket.on("resetFlop", async () => {
       try {
+        const oldLength = tableCards.length;
         tableCards.length = 0;
+
+        if (oldLength === 0) {
+          return socket.emit("dealError", {
+            message: "Флоп уже пуст",
+          });
+        }
+
         console.log("Очищаем флоп");
         io.emit("resetFlop", tableCards);
       } catch (error) {
