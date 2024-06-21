@@ -366,6 +366,7 @@ function initializeSocket(server) {
       }
     });
 
+    let pobeditel = [];
     //Определение победителя
     socket.on("findWinner", async () => {
       try {
@@ -410,7 +411,9 @@ function initializeSocket(server) {
             await winnerPlayer.save();
           }
         }
-        console.log(`Победитель ${(winners, winnerSum)}`);
+
+        pobeditel.push(winners.name);
+        console.log(`Победитель ${(winners.name, winnerSum)}`);
         io.emit("findWinner", { winners, winnerSum });
       } catch (error) {
         console.error("Error in FindWinner event", error);
@@ -461,6 +464,15 @@ function initializeSocket(server) {
     socket.on("updatePositions", async () => {
       try {
         const players = await User.find({});
+        const preflopPlayer = players.every(
+          (player) => player.cards.length === 0
+        );
+
+        if (preflopPlayer) {
+          return socket.emit("dealError", {
+            message: "Игроки уже сменили позиции",
+          });
+        }
 
         // Сброс значений для всех пользователей
         await User.updateMany(
