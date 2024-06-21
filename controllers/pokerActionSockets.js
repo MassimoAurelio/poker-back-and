@@ -123,11 +123,7 @@ function initializeSocket(server) {
           await User.updateOne({ _id: playerId }, { $set: { cards: cards } });
           socket.to(playerId).emit("dealCards", cards);
         }
-        console.log(
-          `Broadcasting deal success to room ${roomId}, ${JSON.stringify(
-            playerCards
-          )}`
-        );
+        console.log(`Раздаем карты ${roomId}, ${JSON.stringify(playerCards)}`);
         io.to(roomId).emit("dealSuccess", "Карты успешно разданы");
       } catch (error) {
         console.error("Error during card dealing:", error.message);
@@ -316,7 +312,13 @@ function initializeSocket(server) {
     socket.on("findWinner", async () => {
       try {
         const players = await User.find({ fold: false, roundStage: "river" });
+        if (players.cards.length === 0) {
+          return socket.emit("dealError", {
+            message: "ОШИБКА",
+          });
+        }
         await User.updateMany({}, { $set: { makeTurn: false } });
+
         const communityCards = tableCards;
         const hands = players.map((player) => {
           const playerCards = player.cards.map(
@@ -343,6 +345,7 @@ function initializeSocket(server) {
             item.turnLastBet +
             item.riverLastBet;
         });
+
         const winners = hands
           .filter((h) => winningHand.includes(h.hand))
           .map((h) => h.player);
@@ -354,66 +357,8 @@ function initializeSocket(server) {
             await winnerPlayer.save();
           }
         }
-        await User.updateMany({}, { lastBet: 0 });
+
         console.log(`Победитель ${(winners, winnerSum)}`);
-        io.emit("findWinner", { winners, winnerSum });
-      } catch (error) {
-        console.error("Error in FindWinner event", error);
-        socket.emit("dealError", {
-          message: "Ошибка при поиске победителя",
-          error: error.message,
-        });
-      }
-    });
-
-    let pobeditel = [];
-    //Определение победителя
-    socket.on("findWinner", async () => {
-      try {
-        const players = await User.find({ fold: false, roundStage: "river" });
-        await User.updateMany({}, { $set: { makeTurn: false } });
-
-        const communityCards = tableCards;
-        const hands = players.map((player) => {
-          const playerCards = player.cards.map(
-            (card) => `${card.value}${card.suit}`
-          );
-          const allCards = [
-            ...playerCards,
-            ...communityCards.map((card) => `${card.value}${card.suit}`),
-          ];
-          return {
-            player: player.name,
-            hand: Hand.solve(allCards),
-          };
-        });
-
-        const winningHand = Hand.winners(hands.map((h) => h.hand));
-        let winnerSum = 0;
-
-        const playersInRound = await User.find({});
-        playersInRound.forEach((item) => {
-          winnerSum +=
-            item.preFlopLastBet +
-            item.flopLastBet +
-            item.turnLastBet +
-            item.riverLastBet;
-        });
-
-        const winners = hands
-          .filter((h) => winningHand.includes(h.hand))
-          .map((h) => h.player);
-
-        for (const winner of winners) {
-          const winnerPlayer = await User.findOne({ name: winner });
-          if (winnerPlayer) {
-            winnerPlayer.stack += winnerSum;
-            await winnerPlayer.save();
-          }
-        }
-
-        pobeditel.push(winners.name);
-        console.log(`Победитель ${(winners.name, winnerSum)}`);
         io.emit("findWinner", { winners, winnerSum });
       } catch (error) {
         console.error("Error in FindWinner event", error);
