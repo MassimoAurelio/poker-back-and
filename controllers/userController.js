@@ -336,7 +336,7 @@ exports.join = async (req, res) => {
           $set: {
             preFlopLastBet: 25 * position,
             lastBet: 25 * position,
-            makeTurn: true,
+           /*  makeTurn: true, */
           },
         }
       );

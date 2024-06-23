@@ -375,6 +375,17 @@ function initializeSocket(server) {
         const players = await User.find({ fold: false });
         await User.updateMany({}, { $set: { makeTurn: false } });
 
+        const playersWithCards = players.filter(
+          (player) => player.cards.length > 0
+        );
+
+        if (playersWithCards.length === 0) {
+          socket.emit("dealError", {
+            message: "Нет игроков с картами для определения победителя",
+          });
+          return;
+        }
+
         let winnerSum = 0;
         const playersInRound = await User.find({});
         playersInRound.forEach((item) => {
@@ -394,7 +405,7 @@ function initializeSocket(server) {
           lastPlayer.stack += winnerSum;
           await lastPlayer.save();
         }
-
+        console.log("remainineOneWinner");
         io.emit("remainineOneWinner", { lastPlayer, winnerSum });
       } catch (error) {
         console.error(error);
