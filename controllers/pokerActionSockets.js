@@ -311,8 +311,16 @@ function initializeSocket(server) {
     //Определение победителя
     socket.on("findWinner", async () => {
       try {
-        const players = await User.find({ fold: false, roundStage: "river" });
-        if (players.cards.length === 0) {
+        const players = await User.find({
+          fold: false,
+          roundStage: "river",
+        }).lean();
+
+        const validPlayers = players.filter((player) =>
+          Array.isArray(player.cards)
+        );
+
+        if (validPlayers.length === 0) {
           return socket.emit("dealError", {
             message: "ОШИБКА",
           });
@@ -364,53 +372,6 @@ function initializeSocket(server) {
         console.error("Error in FindWinner event", error);
         socket.emit("dealError", {
           message: "Ошибка при поиске победителя",
-          error: error.message,
-        });
-      }
-    });
-
-    //Определяем победителя если он остался последним
-    socket.on("remainineOneWinner", async () => {
-      try {
-        const players = await User.find({ fold: false });
-        await User.updateMany({}, { $set: { makeTurn: false } });
-
-        const playersWithCards = players.filter(
-          (player) => player.cards.length > 0
-        );
-
-        if (playersWithCards.length === 0) {
-          socket.emit("dealError", {
-            message: "Нет игроков с картами для определения победителя",
-          });
-          return;
-        }
-
-        let winnerSum = 0;
-        const playersInRound = await User.find({});
-        playersInRound.forEach((item) => {
-          winnerSum +=
-            item.preFlopLastBet +
-            item.flopLastBet +
-            item.turnLastBet +
-            item.riverLastBet;
-        });
-
-        let lastPlayer = null;
-        if (players.length === 1) {
-          lastPlayer = players[0];
-        }
-
-        if (lastPlayer) {
-          lastPlayer.stack += winnerSum;
-          await lastPlayer.save();
-        }
-        console.log("remainineOneWinner");
-        io.emit("remainineOneWinner", { lastPlayer, winnerSum });
-      } catch (error) {
-        console.error(error);
-        socket.emit("dealError", {
-          message: "Ошибка",
           error: error.message,
         });
       }
@@ -499,20 +460,11 @@ function initializeSocket(server) {
 
     socket.on("resetFlop", async () => {
       try {
-        const oldLength = tableCards.length;
-        tableCards.length = 0;
-
-        if (oldLength === 0) {
-          return socket.emit("dealError", {
-            message: "Флоп уже пуст",
-          });
-        }
-
         console.log("Очищаем флоп");
         io.emit("resetFlop", tableCards);
       } catch (error) {
         console.error(error);
-        socket.emit("dealError", {
+        io.emit("dealError", {
           message: "Ошибка при очистке карт стола",
         });
       }
