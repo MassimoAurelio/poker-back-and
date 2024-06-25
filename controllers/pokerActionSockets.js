@@ -371,7 +371,7 @@ function initializeSocket(server) {
         });
 
         // Определяем победителей
-        const winners = hands
+        const winners = hands 
           .filter((h) => winningHand.includes(h.hand))
           .map((h) => h.player);
 
@@ -402,7 +402,7 @@ function initializeSocket(server) {
           await lastPlayer.save(); // Сохраняем изменения
           // Сброс значений для всех пользователей
           await User.updateMany(
-            {},
+            {}, 
             {
               $set: {
                 roundStage: "preflop",
