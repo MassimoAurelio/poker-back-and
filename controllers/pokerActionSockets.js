@@ -311,11 +311,22 @@ function initializeSocket(server) {
     //Определение победителя
     socket.on("findWinner", async () => {
       try {
+        // Получаем всех игроков, которые еще не сложили карты
         const players = await User.find({
           fold: false,
-          roundStage: "river",
-        }).lean();
+        });
 
+        const playersInPreFlop = players.every(
+          (player) => player.roundStage === "preflop"
+        );
+
+        if (playersInPreFlop) {
+          return socket.emit("dealError", {
+            message: "Победитель уже определен",
+          });
+        }
+
+        // Фильтруем игроков, у которых есть действительные карты
         const validPlayers = players.filter((player) =>
           Array.isArray(player.cards)
         );
@@ -325,9 +336,12 @@ function initializeSocket(server) {
             message: "ОШИБКА",
           });
         }
+
+        // Сбрасываем флаг makeTurn для всех пользователей
         await User.updateMany({}, { $set: { makeTurn: false } });
 
-        const communityCards = tableCards;
+        // Обрабатываем общие карты и руки каждого игрока
+        const communityCards = tableCards; // Предполагается, что tableCards уже определен где-то выше
         const hands = players.map((player) => {
           const playerCards = player.cards.map(
             (card) => `${card.value}${card.suit}`
@@ -342,9 +356,11 @@ function initializeSocket(server) {
           };
         });
 
+        // Находим победную руку
         const winningHand = Hand.winners(hands.map((h) => h.hand));
-        let winnerSum = 0;
 
+        // Рассчитываем сумму ставок для определения размера выигрыша
+        let winnerSum = 0;
         const playersInRound = await User.find({});
         playersInRound.forEach((item) => {
           winnerSum +=
@@ -354,10 +370,12 @@ function initializeSocket(server) {
             item.riverLastBet;
         });
 
+        // Определяем победителей
         const winners = hands
           .filter((h) => winningHand.includes(h.hand))
           .map((h) => h.player);
 
+        // Обновляем стек победителей
         for (const winner of winners) {
           const winnerPlayer = await User.findOne({ name: winner });
           if (winnerPlayer) {
@@ -366,8 +384,33 @@ function initializeSocket(server) {
           }
         }
 
-        console.log(`Победитель ${(winners, winnerSum)}`);
-        io.emit("findWinner", { winners, winnerSum });
+        // Сброс значений для всех пользователей
+        await User.updateMany(
+          {},
+          {
+            $set: {
+              roundStage: "preflop",
+            },
+          }
+        );
+
+        // Проверяем, остался ли только один игрок
+        if (players.length === 1) {
+          // Если да, то он автоматически выигрывает
+          const lastPlayer = players[0];
+          lastPlayer.stack += winnerSum; // Добавляем к его стеке сумму ставок
+          await lastPlayer.save(); // Сохраняем изменения
+
+          // Эмитим событие с информацией о последнем игроке как победителе
+          console.log(
+            `Юзер остался один, все остальные сбросили, он победитель ${winnerSum}`
+          );
+          io.emit("findWinner", { lastPlayer, winnerSum });
+        } else {
+          // Если есть несколько победителей, эмитим их
+          console.log(`Игроки дошли до ривера и вскрыли карты ${winnerSum}`);
+          io.emit("findWinner", { winners, winnerSum });
+        }
       } catch (error) {
         console.error("Error in FindWinner event", error);
         socket.emit("dealError", {
@@ -401,7 +444,6 @@ function initializeSocket(server) {
               flopLastBet: 0,
               turnLastBet: 0,
               riverLastBet: 0,
-              roundStage: "preflop",
               fold: false,
               makeTurn: false,
               cards: [],
