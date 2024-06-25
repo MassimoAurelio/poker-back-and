@@ -400,6 +400,15 @@ function initializeSocket(server) {
           const lastPlayer = players[0];
           lastPlayer.stack += winnerSum; // Добавляем к его стеке сумму ставок
           await lastPlayer.save(); // Сохраняем изменения
+          // Сброс значений для всех пользователей
+          await User.updateMany(
+            {},
+            {
+              $set: {
+                roundStage: "preflop",
+              },
+            }
+          );
 
           // Эмитим событие с информацией о последнем игроке как победителе
           console.log(
