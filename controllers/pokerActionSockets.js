@@ -316,16 +316,6 @@ function initializeSocket(server) {
           fold: false,
         });
 
-        const playersInPreFlop = players.every(
-          (player) => player.roundStage === "preflop"
-        );
-
-        if (playersInPreFlop) {
-          return socket.emit("dealError", {
-            message: "Победитель уже определен",
-          });
-        }
-
         // Фильтруем игроков, у которых есть действительные карты
         const validPlayers = players.filter((player) =>
           Array.isArray(player.cards)
@@ -371,7 +361,7 @@ function initializeSocket(server) {
         });
 
         // Определяем победителей
-        const winners = hands 
+        const winners = hands
           .filter((h) => winningHand.includes(h.hand))
           .map((h) => h.player);
 
@@ -389,7 +379,7 @@ function initializeSocket(server) {
           {},
           {
             $set: {
-              roundStage: "preflop",
+              lastBet: 0,
             },
           }
         );
@@ -402,7 +392,7 @@ function initializeSocket(server) {
           await lastPlayer.save(); // Сохраняем изменения
           // Сброс значений для всех пользователей
           await User.updateMany(
-            {}, 
+            {},
             {
               $set: {
                 roundStage: "preflop",
@@ -414,11 +404,11 @@ function initializeSocket(server) {
           console.log(
             `Юзер остался один, все остальные сбросили, он победитель ${winnerSum}`
           );
-          io.emit("findWinner", { lastPlayer, winnerSum });
+          socket.emit("findWinner", { lastPlayer, winnerSum });
         } else {
           // Если есть несколько победителей, эмитим их
           console.log(`Игроки дошли до ривера и вскрыли карты ${winnerSum}`);
-          io.emit("findWinner", { winners, winnerSum });
+          socket.emit("findWinner", { winners, winnerSum });
         }
       } catch (error) {
         console.error("Error in FindWinner event", error);
@@ -499,7 +489,7 @@ function initializeSocket(server) {
 
         console.log("Начинаем новый раунд");
         clearFlop();
-        io.emit("updatePositions", "Позиции игроков успешно обновлены.");
+        socket.emit("updatePositions", "Позиции игроков успешно обновлены.");
       } catch (error) {
         console.error(error);
         socket.emit("dealError", {
