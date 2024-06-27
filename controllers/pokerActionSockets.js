@@ -316,6 +316,19 @@ function initializeSocket(server) {
           fold: false,
         });
 
+        const playersNotMakeTurn = players.every(
+          (player) => player.makeTurn === false
+        );
+
+        if (playersNotMakeTurn) {
+          return socket.emit("dealError", {
+            message: "Победитель уже находился",
+          });
+        }
+
+        // Сбрасываем флаг makeTurn для всех пользователей
+        await User.updateMany({}, { $set: { makeTurn: false } });
+
         // Фильтруем игроков, у которых есть действительные карты
         const validPlayers = players.filter((player) =>
           Array.isArray(player.cards)
@@ -326,9 +339,6 @@ function initializeSocket(server) {
             message: "ОШИБКА",
           });
         }
-
-        // Сбрасываем флаг makeTurn для всех пользователей
-        await User.updateMany({}, { $set: { makeTurn: false } });
 
         // Обрабатываем общие карты и руки каждого игрока
         const communityCards = tableCards; // Предполагается, что tableCards уже определен где-то выше
@@ -374,16 +384,6 @@ function initializeSocket(server) {
           }
         }
 
-        // Сброс значений для всех пользователей
-        await User.updateMany(
-          {},
-          {
-            $set: {
-              lastBet: 0,
-            },
-          }
-        );
-
         // Проверяем, остался ли только один игрок
         if (players.length === 1) {
           // Если да, то он автоматически выигрывает
@@ -391,14 +391,6 @@ function initializeSocket(server) {
           lastPlayer.stack += winnerSum; // Добавляем к его стеке сумму ставок
           await lastPlayer.save(); // Сохраняем изменения
           // Сброс значений для всех пользователей
-          await User.updateMany(
-            {},
-            {
-              $set: {
-                roundStage: "preflop",
-              },
-            }
-          );
 
           // Эмитим событие с информацией о последнем игроке как победителе
           console.log(
@@ -444,7 +436,7 @@ function initializeSocket(server) {
               turnLastBet: 0,
               riverLastBet: 0,
               fold: false,
-              makeTurn: false,
+              roundStage: "preflop",
               cards: [],
             },
           }
