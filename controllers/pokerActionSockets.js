@@ -49,7 +49,6 @@ function initializeSocket(server) {
 
   // Функция для раздачи двух карт каждому игроку
   function dealCards(deck, players) {
-    // Очистка массивов перед раздачей
     playerCards.length = 0;
     deckWithoutPlayerCards.length = 0;
 
@@ -311,7 +310,6 @@ function initializeSocket(server) {
     //Определение победителя
     socket.on("findWinner", async () => {
       try {
-        // Получаем всех игроков, которые еще не сложили карты
         const players = await User.find({
           fold: false,
         });
@@ -326,10 +324,8 @@ function initializeSocket(server) {
           });
         }
 
-        // Сбрасываем флаг makeTurn для всех пользователей
         await User.updateMany({}, { $set: { makeTurn: false } });
 
-        // Фильтруем игроков, у которых есть действительные карты
         const validPlayers = players.filter((player) =>
           Array.isArray(player.cards)
         );
@@ -339,9 +335,7 @@ function initializeSocket(server) {
             message: "ОШИБКА",
           });
         }
-
-        // Обрабатываем общие карты и руки каждого игрока
-        const communityCards = tableCards; // Предполагается, что tableCards уже определен где-то выше
+        const communityCards = tableCards;
         const hands = players.map((player) => {
           const playerCards = player.cards.map(
             (card) => `${card.value}${card.suit}`
@@ -354,12 +348,8 @@ function initializeSocket(server) {
             player: player.name,
             hand: Hand.solve(allCards),
           };
-        });
-
-        // Находим победную руку
+        }); 
         const winningHand = Hand.winners(hands.map((h) => h.hand));
-
-        // Рассчитываем сумму ставок для определения размера выигрыша
         let winnerSum = 0;
         const playersInRound = await User.find({});
         playersInRound.forEach((item) => {
@@ -370,12 +360,12 @@ function initializeSocket(server) {
             item.riverLastBet;
         });
 
-        // Определяем победителей
+   
         const winners = hands
           .filter((h) => winningHand.includes(h.hand))
           .map((h) => h.player);
 
-        // Обновляем стек победителей
+   
         for (const winner of winners) {
           const winnerPlayer = await User.findOne({ name: winner });
           if (winnerPlayer) {
@@ -383,22 +373,16 @@ function initializeSocket(server) {
             await winnerPlayer.save();
           }
         }
-
-        // Проверяем, остался ли только один игрок
         if (players.length === 1) {
-          // Если да, то он автоматически выигрывает
+          
           const lastPlayer = players[0];
-          lastPlayer.stack += winnerSum; // Добавляем к его стеке сумму ставок
-          await lastPlayer.save(); // Сохраняем изменения
-          // Сброс значений для всех пользователей
-
-          // Эмитим событие с информацией о последнем игроке как победителе
+          lastPlayer.stack += winnerSum; 
+          await lastPlayer.save(); 
           console.log(
             `Юзер остался один, все остальные сбросили, он победитель ${winnerSum}`
           );
           socket.emit("findWinner", { lastPlayer, winnerSum });
         } else {
-          // Если есть несколько победителей, эмитим их
           console.log(`Игроки дошли до ривера и вскрыли карты ${winnerSum}`);
           socket.emit("findWinner", { winners, winnerSum });
         }
@@ -424,8 +408,6 @@ function initializeSocket(server) {
             message: "Игроки уже сменили позиции",
           });
         }
-
-        // Сброс значений для всех пользователей
         await User.updateMany(
           {},
           {
@@ -441,13 +423,10 @@ function initializeSocket(server) {
             },
           }
         );
-
-        // Найти игрока с самой высокой позицией
         let highPositionPlayer = players.reduce((a, b) => {
           return a.position > b.position ? a : b;
         }, players[0]);
 
-        // Создать новый объект с обновленными позициями
         let updatedPositions = {};
         for (let player of players) {
           updatedPositions[player._id] =
@@ -456,7 +435,6 @@ function initializeSocket(server) {
               : player.position + 1;
         }
 
-        // Обновить позиции пользователей за один запрос
         for (let [id, newPosition] of Object.entries(updatedPositions)) {
           await User.updateOne({ _id: id }, { position: newPosition });
         }
