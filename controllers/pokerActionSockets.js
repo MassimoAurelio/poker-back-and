@@ -1,6 +1,7 @@
 const socketio = require("socket.io");
 const User = require("../models/modelUser");
 const { Hand } = require("pokersolver");
+const Room = require("../models/room");
 
 function initializeSocket(server) {
   const io = socketio(server, {
@@ -30,6 +31,7 @@ function initializeSocket(server) {
   let tableCards = [];
   const deckWithoutPlayerCards = [];
   const playerCards = [];
+  const roomStates = {};
 
   // Функция для перемешивания карт в колоде
   function shuffleDeck() {
@@ -64,6 +66,41 @@ function initializeSocket(server) {
     return playerCards;
   }
 
+  // Функция для начала раздачи карт
+  async function startCardDistribution(roomId) {
+    try {
+      const players = await User.find({ roomId: roomId });
+
+      const emptyCards = players.every((player) => {
+        return player.cards.length === 0;
+      });
+
+      if (!emptyCards) {
+        return io.to(roomId).emit("dealError", {
+          message: "Карты уже разданы",
+        });
+      }
+
+      const deck = shuffleDeck();
+
+      const playerCards = dealCards(deck, players);
+
+      for (const { playerId, cards } of playerCards) {
+        await User.updateOne({ _id: playerId }, { $set: { cards: cards } });
+        io.to(playerId).emit("dealCards", cards);
+      }
+
+      console.log(`Раздаем карты ${roomId}, ${JSON.stringify(playerCards)}`);
+      io.to(roomId).emit("dealSuccess", "Карты успешно разданы");
+    } catch (error) {
+      console.error("Error during card dealing:", error.message);
+      io.to(roomId).emit("dealError", {
+        message: "Ошибка при раздаче карт",
+        error: error.message,
+      });
+    }
+  }
+
   function clearFlop() {
     return (tableCards.length = 0);
   }
@@ -89,49 +126,102 @@ function initializeSocket(server) {
     socket.on("getPlayers", async (roomId) => {
       try {
         const players = await User.find({ roomId: roomId });
-        io.to(socket.id).emit("playersData", players);
+        socket.emit("playersData", players);
       } catch (error) {
-        console.error("Error fetching players:", error.message);
-        socket.emit("error", {
+        socket.emit("getPlayersError", {
           message: "Ошибка при получении списка игроков",
           error: error.message,
         });
       }
     });
 
-    // Раздача карт каждому игроку
-    socket.on("requestDeal", async ({ roomId }) => {
+    // Обработка события подключения к комнате (join)
+    socket.on("join", async (data) => {
+      const { player, position, stack, roomId } = data;
       try {
-        const players = await User.find({ roomId: roomId });
 
-        const emptyCards = players.every((player) => {
-          return player.cards.length === 0;
+        const existingPlayerInOtherRoom = await User.findOne({
+          name: player,
+          roomId: { $ne: roomId },
         });
 
-        if (!emptyCards) {
-          return socket.emit("dealError", {
-            message: "Карты уже разданы",
-          });
+        if (existingPlayerInOtherRoom) {
+
+          await Room.updateOne(
+            { _id: existingPlayerInOtherRoom.roomId },
+            { $pull: { users: existingPlayerInOtherRoom._id } }
+          );
+          existingPlayerInOtherRoom.roomId = null;
+          await existingPlayerInOtherRoom.save();
         }
 
-        const deck = shuffleDeck();
-
-        const playerCards = dealCards(deck, players);
-
-        for (const { playerId, cards } of playerCards) {
-          await User.updateOne({ _id: playerId }, { $set: { cards: cards } });
-          socket.to(playerId).emit("dealCards", cards);
+        const existingPlayer = await User.findOne({
+          name: player,
+          roomId: roomId,
+        });
+        if (existingPlayer) {
+          return socket.emit("joinError", "Такой игрок уже сидит за столом");
         }
-        console.log(`Раздаем карты ${roomId}, ${JSON.stringify(playerCards)}`);
-        io.to(roomId).emit("dealSuccess", "Карты успешно разданы");
+
+        const positionPlayer = await User.findOne({
+          position: position,
+          roomId: roomId,
+        });
+        if (positionPlayer) {
+          return socket.emit("joinError", "Это место на столе уже занято");
+        }
+
+        const newPlayer = new User({
+          name: player,
+          position,
+          stack,
+          roomId: roomId,
+        });
+        await newPlayer.save();
+
+        await Room.updateOne(
+          { _id: roomId },
+          { $addToSet: { users: newPlayer._id } }
+        );
+
+        if (position === 3) {
+          await User.updateMany(
+            { position: 3, roomId: roomId },
+            { $set: { currentPlayerId: true } }
+          );
+        }
+
+        if (!roomStates[roomId]) {
+          roomStates[roomId] = { playerCount: 0 };
+        }
+        roomStates[roomId].playerCount++;
+
+        if (roomStates[roomId].playerCount === 3) {
+          console.log("Три игрока сидят за столом. Раздача карт...");
+          startCardDistribution(roomId); 
+        }
+
+        if (position === 1 || position === 2) {
+          await User.updateOne(
+            { _id: newPlayer._id },
+            {
+              $inc: { stack: -(25 * position) },
+              $set: {
+                preFlopLastBet: 25 * position,
+                lastBet: 25 * position,
+              },
+            }
+          );
+        }
+        socket.emit(
+          "joinSuccess",
+          `Игрок ${player} присоединился к столу на позицию ${position}.`
+        );
       } catch (error) {
-        console.error("Error during card dealing:", error.message);
-        socket.emit("dealError", {
-          message: "Ошибка при раздаче карт",
-          error: error.message,
-        });
+        socket.emit("joinError", { message: error.message });
       }
     });
+
 
     //Выдача фропа
     socket.on("dealFlop", async () => {
@@ -307,93 +397,63 @@ function initializeSocket(server) {
       }
     });
 
-    //Определение победителя
-    socket.on("findWinner", async () => {
-      try {
-        const players = await User.find({
-          fold: false,
-        });
+    // Функция для определения победителя
+    async function findWinner(players) {
+      const validPlayers = players.filter((player) =>
+        Array.isArray(player.cards)
+      );
 
-        const playersNotMakeTurn = players.every(
-          (player) => player.makeTurn === false
-        );
-
-        if (playersNotMakeTurn) {
-          return socket.emit("dealError", {
-            message: "Победитель уже находился",
-          });
-        }
-
-        await User.updateMany({}, { $set: { makeTurn: false } });
-
-        const validPlayers = players.filter((player) =>
-          Array.isArray(player.cards)
-        );
-
-        if (validPlayers.length === 0) {
-          return socket.emit("dealError", {
-            message: "ОШИБКА",
-          });
-        }
-        const communityCards = tableCards;
-        const hands = players.map((player) => {
-          const playerCards = player.cards.map(
-            (card) => `${card.value}${card.suit}`
-          );
-          const allCards = [
-            ...playerCards,
-            ...communityCards.map((card) => `${card.value}${card.suit}`),
-          ];
-          return {
-            player: player.name,
-            hand: Hand.solve(allCards),
-          };
-        }); 
-        const winningHand = Hand.winners(hands.map((h) => h.hand));
-        let winnerSum = 0;
-        const playersInRound = await User.find({});
-        playersInRound.forEach((item) => {
-          winnerSum +=
-            item.preFlopLastBet +
-            item.flopLastBet +
-            item.turnLastBet +
-            item.riverLastBet;
-        });
-
-   
-        const winners = hands
-          .filter((h) => winningHand.includes(h.hand))
-          .map((h) => h.player);
-
-   
-        for (const winner of winners) {
-          const winnerPlayer = await User.findOne({ name: winner });
-          if (winnerPlayer) {
-            winnerPlayer.stack += winnerSum;
-            await winnerPlayer.save();
-          }
-        }
-        if (players.length === 1) {
-          
-          const lastPlayer = players[0];
-          lastPlayer.stack += winnerSum; 
-          await lastPlayer.save(); 
-          console.log(
-            `Юзер остался один, все остальные сбросили, он победитель ${winnerSum}`
-          );
-          socket.emit("findWinner", { lastPlayer, winnerSum });
-        } else {
-          console.log(`Игроки дошли до ривера и вскрыли карты ${winnerSum}`);
-          socket.emit("findWinner", { winners, winnerSum });
-        }
-      } catch (error) {
-        console.error("Error in FindWinner event", error);
-        socket.emit("dealError", {
-          message: "Ошибка при поиске победителя",
-          error: error.message,
-        });
+      if (validPlayers.length === 0) {
+        throw new Error("No valid players found");
       }
-    });
+
+      const communityCards = tableCards;
+      const hands = validPlayers.map((player) => {
+        const playerCards = player.cards.map(
+          (card) => `${card.value}${card.suit}`
+        );
+        const allCards = [
+          ...playerCards,
+          ...communityCards.map((card) => `${card.value}${card.suit}`),
+        ];
+        return {
+          player: player.name,
+          hand: Hand.solve(allCards),
+        };
+      });
+
+      const winningHand = Hand.winners(hands.map((h) => h.hand));
+      let winnerSum = 0;
+      const playersInRound = await User.find({});
+      playersInRound.forEach((item) => {
+        winnerSum +=
+          item.preFlopLastBet +
+          item.flopLastBet +
+          item.turnLastBet +
+          item.riverLastBet;
+      });
+
+      const winners = hands
+        .filter((h) => winningHand.includes(h.hand))
+        .map((h) => h.player);
+
+      for (const winner of winners) {
+        const winnerPlayer = await User.findOne({ name: winner });
+        if (winnerPlayer) {
+          winnerPlayer.stack += winnerSum;
+          await winnerPlayer.save();
+        }
+      }
+
+      if (players.length === 1) {
+        const lastPlayer = players[0];
+        lastPlayer.stack += winnerSum;
+        await lastPlayer.save();
+        return { lastPlayer, winnerSum };
+      } else {
+        return { winners, winnerSum };
+      }
+    }
 
     // Обновляем позиции игроков перед следующим раундом
     socket.on("updatePositions", async () => {
@@ -478,6 +538,14 @@ function initializeSocket(server) {
         io.emit("dealError", {
           message: "Ошибка при очистке карт стола",
         });
+      }
+    });
+    socket.on("disconnect", () => {
+      console.log("Client disconnected");
+      for (const roomId of Object.keys(roomStates)) {
+        if (roomStates[roomId].playerCount > 0) {
+          roomStates[roomId].playerCount--;
+        }
       }
     });
   });
