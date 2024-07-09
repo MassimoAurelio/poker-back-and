@@ -32,6 +32,7 @@ function initializeSocket(server) {
   const deckWithoutPlayerCards = [];
   const playerCards = [];
   const roomStates = {};
+  let flopDealt = false;
 
   // Функция для перемешивания карт в колоде
   async function shuffleDeck() {
@@ -269,6 +270,11 @@ function initializeSocket(server) {
           player.roundStage === "preflop" &&
           player.makeTurn === true
       );
+
+      const allMakeTurn = players.every((player) => player.makeTurn === true);
+      if (!allMakeTurn) {
+        return false;
+      }
       if (activePlayers.length === 0) {
         return false;
       }
@@ -282,7 +288,11 @@ function initializeSocket(server) {
         const allSameMaxBet = activePlayers.every(
           (player) => player.preFlopLastBet === maxBet.preFlopLastBet
         );
-        return allSameMaxBet;
+        if (allSameMaxBet) {
+          console.log("true");
+          return true;
+        }
+        return false;
       }
     } catch (error) {
       console.error("Error in dealTurn event:", error);
@@ -291,6 +301,7 @@ function initializeSocket(server) {
         error: error.message,
       });
     }
+    return false;
   }
 
   async function giveTurn(roomId) {
@@ -378,37 +389,23 @@ function initializeSocket(server) {
     socket.on("getPlayers", async (roomId) => {
       try {
         const players = await User.find({ roomId: roomId });
-
         const shouldDealFlop = await giveFlop(roomId);
         const shouldDealTurn = await giveTurn(roomId);
         const shouldDealRiver = await giveRiver(roomId);
 
-        if (shouldDealFlop) {
+        if (shouldDealFlop && !flopDealt) {
           await dealFlopCard(roomId);
-        } else if (tableCards.length > 2) {
-          return socket.emit("getPlayersError", {
-            message: "Ошибка при получении списка игроков",
-            error: error.message,
-          });
+          flopDealt = true;
         }
 
         if (shouldDealTurn) {
           await dealTurnCard(roomId);
-        } else if (tableCards.length > 3) {
-          return socket.emit("getPlayersError", {
-            message: "Ошибка при получении списка игроков",
-            error: error.message,
-          });
         }
 
         if (shouldDealRiver) {
           await dealRiver(roomId);
-        } else if (tableCards.length > 4) {
-          return socket.emit("getPlayersError", {
-            message: "Ошибка при получении списка игроков",
-            error: error.message,
-          });
         }
+
         socket.emit("playersData", players);
       } catch (error) {
         socket.emit("getPlayersError", {
