@@ -104,9 +104,17 @@ function initializeSocket(server) {
       });
     }
   }
-
-  //функция раздачи флоп карты
+  let isDealingFlopCard = false;
+  //РАЗДАЧА ФРОПА
   async function dealFlopCard(roomId) {
+    if (tableCards.length >= 3) {
+      return;
+    }
+    if (isDealingFlopCard) {
+      return;
+    }
+
+    isDealingFlopCard = true;
     try {
       const players = await User.find({ fold: false, roomId: roomId });
       await clearFlop();
@@ -155,10 +163,22 @@ function initializeSocket(server) {
         message: "Ошибка при выдаче терна",
         error: error.message,
       });
+    } finally {
+      isDealingFlopCard = false;
     }
   }
 
+  let isDealingTurnCard = false;
+  //ВЫДАЧА ТЕРНА
   async function dealTurnCard(roomId) {
+    if (tableCards.length >= 4) {
+      return;
+    }
+
+    if (isDealingTurnCard) {
+      return;
+    }
+    isDealingTurnCard = true;
     try {
       const players = await User.find({ roomId: roomId, fold: false });
       await dealTernCard();
@@ -206,13 +226,22 @@ function initializeSocket(server) {
         message: "Ошибка при выдаче терна",
         error: error.message,
       });
+    } finally {
+      isDealingTurnCard = false;
     }
   }
 
+  let isDealingRiverCard = false;
   async function dealRiver(roomId) {
+    if (tableCards.length >= 5) {   
+      return;
+    }
+    if (isDealingRiverCard) {
+      return;
+    }
+    isDealingRiverCard = true;
     try {
       await dealTernCard();
-
       const players = await User.find({ roomId: roomId, fold: false });
       const bbPlayer = await User.findOne({ position: 2 });
       await User.updateMany({}, { lastBet: 0 });
@@ -258,6 +287,8 @@ function initializeSocket(server) {
         message: "Ошибка при выдаче терна",
         error: error.message,
       });
+    } finally {
+      isDealingRiverCard = false;
     }
   }
 
@@ -377,8 +408,10 @@ function initializeSocket(server) {
   }
   // Функция для раздачи одной карты (терна)
   async function dealTernCard() {
+    console.log("Dealing turn card");
     for (let i = 0; i < 1; i++) {
       tableCards.push(deckWithoutPlayerCards.pop());
+      console.log("Current tableCards after turn:", tableCards);
     }
     return tableCards;
   }
