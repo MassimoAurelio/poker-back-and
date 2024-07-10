@@ -32,7 +32,12 @@ function initializeSocket(server) {
   const deckWithoutPlayerCards = [];
   const playerCards = [];
   const roomStates = {};
-  let flopDealt = false;
+  let gameState = {
+    shouldDealFlop: false,
+    shouldDealTurn: false,
+    shouldDealRiver: false,
+    updatePosition: false,
+  };
 
   // Функция для перемешивания карт в колоде
   async function shuffleDeck() {
@@ -233,7 +238,7 @@ function initializeSocket(server) {
 
   let isDealingRiverCard = false;
   async function dealRiver(roomId) {
-    if (tableCards.length >= 5) {   
+    if (tableCards.length >= 5) {
       return;
     }
     if (isDealingRiverCard) {
@@ -292,7 +297,12 @@ function initializeSocket(server) {
     }
   }
 
+  let isTrueFlopCard = false;
   async function giveFlop(roomId) {
+    if (isTrueFlopCard) {
+      return;
+    }
+    isTrueFlopCard = true;
     try {
       const players = await User.find({ roomId: roomId, fold: false });
       const activePlayers = players.filter(
@@ -320,22 +330,26 @@ function initializeSocket(server) {
           (player) => player.preFlopLastBet === maxBet.preFlopLastBet
         );
         if (allSameMaxBet) {
-          console.log("true");
+          console.log(
+            `ВЫЗЫВАЕМ giveFlop в позиции ${JSON.stringify(isTrueFlopCard)}`
+          );
           return true;
         }
         return false;
       }
     } catch (error) {
       console.error("Error in dealTurn event:", error);
-      io.emit("dealError", {
-        message: "Ошибка при определении выдачи флопа",
-        error: error.message,
-      });
+    } finally {
+      isTrueFlopCard = false;
     }
-    return false;
   }
 
+  let isTrueTurnCard = false;
   async function giveTurn(roomId) {
+    if (isTrueTurnCard) {
+      return;
+    }
+    isTrueTurnCard = true;
     try {
       const players = await User.find({ roomId: roomId, fold: false });
       const flopPlayers = players.filter(
@@ -349,23 +363,31 @@ function initializeSocket(server) {
       const maxBet = flopPlayers.reduce((maxSum, currentPlayer) =>
         maxSum.flopLastBet > currentPlayer.flopLastBet ? maxSum : currentPlayer
       );
-
       const allSameMaxBet = flopPlayers.every(
         (player) =>
           player.flopLastBet === maxBet.flopLastBet && player.makeTurn === true
       );
-
-      return allSameMaxBet;
+      if (allSameMaxBet) {
+        console.log(
+          `ВЫЗЫВАЕМ giveTurn в позиции ${JSON.stringify(isTrueFlopCard)}`
+        );
+        return true;
+      } else {
+        return false;
+      }
     } catch (error) {
       console.error("Error in dealTurn event:", error);
-      io.emit("dealError", {
-        message: "Ошибка при определении выдачи флопа",
-        error: error.message,
-      });
+    } finally {
+      isTrueTurnCard = false;
     }
   }
 
+  let isTrueRiverCard = false;
   async function giveRiver(roomId) {
+    if (isTrueRiverCard) {
+      return;
+    }
+    isTrueRiverCard = true;
     try {
       const players = await User.find({ roomId: roomId, fold: false });
       const turnPlayers = players.filter(
@@ -379,19 +401,136 @@ function initializeSocket(server) {
       const maxBet = turnPlayers.reduce((maxSum, currentPlayer) =>
         maxSum.turnLastBet > currentPlayer.turnLastBet ? maxSum : currentPlayer
       );
-
+      console.log(
+        `ВЫЗЫВАЕМ giveRiver в позиции ${JSON.stringify(isTrueRiverCard)}`
+      );
       const allSameMaxBet = turnPlayers.every(
         (player) =>
           player.turnLastBet === maxBet.turnLastBet && player.makeTurn === true
       );
 
-      return allSameMaxBet;
+      if (allSameMaxBet) {
+        console.log(
+          `ВЫЗЫВАЕМ giveRiver в позиции ${JSON.stringify(isTrueFlopCard)}`
+        );
+        return true;
+      } else {
+        return false;
+      }
     } catch (error) {
       console.error("Error in dealTurn event:", error);
+    } finally {
+      isTrueRiverCard = false;
+    }
+  }
+
+  let repeateUpdatePosBlock = false;
+  async function updatePos(roomId) {
+    try {
+      const players = await User.find({ roomId: roomId });
+
+      if (repeateUpdatePosBlock) {
+        return;
+      }
+      repeateUpdatePosBlock = true;
+
+      await User.updateMany(
+        {},
+        {
+          $set: {
+            lastBet: 0,
+            preFlopLastBet: 0,
+            flopLastBet: 0,
+            turnLastBet: 0,
+            riverLastBet: 0,
+            fold: false,
+            roundStage: "preflop",
+            cards: [],
+          },
+        }
+      );
+      let highPositionPlayer = players.reduce((a, b) => {
+        return a.position > b.position ? a : b;
+      }, players[0]);
+
+      let updatedPositions = {};
+      for (let player of players) {
+        updatedPositions[player._id] =
+          player.position === highPositionPlayer.position
+            ? 1
+            : player.position + 1;
+      }
+
+      for (let [id, newPosition] of Object.entries(updatedPositions)) {
+        await User.updateOne({ _id: id }, { position: newPosition });
+      }
+
+      await User.updateOne({ position: 1 }, { $inc: { stack: -25 } });
+      await User.updateOne({ position: 2 }, { $inc: { stack: -50 } });
+      await User.updateOne(
+        { position: 1 },
+        { $set: { lastBet: 25, preFlopLastBet: 25 } }
+      );
+      await User.updateOne(
+        { position: 2 },
+        { $set: { lastBet: 50, preFlopLastBet: 50 } }
+      );
+
+      await User.updateMany({}, { $set: { currentPlayerId: false } });
+
+      await User.updateOne(
+        { position: 3 },
+        { $set: { currentPlayerId: true } }
+      );
+
+      console.log("Начинаем новый раунд");
+      clearFlop();
+      io.emit("updatePositions", "Позиции игроков успешно обновлены.");
+      io.emit("clearTableCards");
+    } catch (error) {
+      console.error(error);
       io.emit("dealError", {
-        message: "Ошибка при определении выдачи флопа",
+        message: "Ошибка при смене позиций игроков",
         error: error.message,
       });
+    } finally {
+      repeateUpdatePosBlock = false;
+    }
+  }
+
+  let findWinnerTriggerBlocker = false;
+  async function findWinnerTrigger(roomId) {
+    if (findWinnerTriggerBlocker) {
+      return;
+    }
+    findWinnerTriggerBlocker = true;
+    try {
+      const players = await User.find({ roomId: roomId });
+
+      const turnPlayers = players.filter(
+        (player) => player.fold === false && player.roundStage === "river"
+      );
+
+      if (turnPlayers.length === 0) {
+        return false;
+      }
+
+      const maxBet = turnPlayers.reduce((maxSum, currentPlayer) =>
+        maxSum.riverLastBet > currentPlayer.riverLastBet
+          ? maxSum
+          : currentPlayer
+      );
+
+      const allSameMaxBet = turnPlayers.every(
+        (player) =>
+          player.riverLastBet === maxBet.riverLastBet &&
+          player.makeTurn === true
+      );
+      return allSameMaxBet;
+    } catch (error) {
+      console.error("Error in findWinner event:", error);
+    } finally {
+      findWinnerTriggerBlocker = false;
     }
   }
 
@@ -401,19 +540,13 @@ function initializeSocket(server) {
 
   // Функция для раздачи трех карт (флопа)
   async function dealFlopCards() {
-    for (let i = 0; i < 3; i++) {
-      tableCards.push(deckWithoutPlayerCards.pop());
-    }
-    return tableCards;
+    tableCards.push(deckWithoutPlayerCards.pop());
+    tableCards.push(deckWithoutPlayerCards.pop());
+    tableCards.push(deckWithoutPlayerCards.pop());
   }
   // Функция для раздачи одной карты (терна)
   async function dealTernCard() {
-    console.log("Dealing turn card");
-    for (let i = 0; i < 1; i++) {
-      tableCards.push(deckWithoutPlayerCards.pop());
-      console.log("Current tableCards after turn:", tableCards);
-    }
-    return tableCards;
+    tableCards.push(deckWithoutPlayerCards.pop());
   }
 
   io.on("connection", (socket) => {
@@ -425,18 +558,24 @@ function initializeSocket(server) {
         const shouldDealFlop = await giveFlop(roomId);
         const shouldDealTurn = await giveTurn(roomId);
         const shouldDealRiver = await giveRiver(roomId);
+        const updatePosition = await findWinnerTrigger(roomId);
 
-        if (shouldDealFlop && !flopDealt) {
+        gameState.shouldDealFlop = shouldDealFlop;
+        gameState.shouldDealTurn = shouldDealTurn;
+        gameState.shouldDealRiver = shouldDealRiver;
+        gameState.updatePosition = updatePosition;
+
+        if (gameState.shouldDealFlop) {
           await dealFlopCard(roomId);
-          flopDealt = true;
         }
-
-        if (shouldDealTurn) {
+        if (gameState.shouldDealTurn) {
           await dealTurnCard(roomId);
         }
-
-        if (shouldDealRiver) {
+        if (gameState.shouldDealRiver) {
           await dealRiver(roomId);
+        }
+        if (gameState.updatePosition) {
+          await updatePos(roomId);
         }
 
         socket.emit("playersData", players);
@@ -648,91 +787,6 @@ function initializeSocket(server) {
       }
     }
 
-    // Обновляем позиции игроков перед следующим раундом
-    socket.on("updatePositions", async () => {
-      try {
-        const players = await User.find({});
-        const preflopPlayer = players.every(
-          (player) => player.cards.length === 0
-        );
-
-        if (preflopPlayer) {
-          return socket.emit("dealError", {
-            message: "Игроки уже сменили позиции",
-          });
-        }
-        await User.updateMany(
-          {},
-          {
-            $set: {
-              lastBet: 0,
-              preFlopLastBet: 0,
-              flopLastBet: 0,
-              turnLastBet: 0,
-              riverLastBet: 0,
-              fold: false,
-              roundStage: "preflop",
-              cards: [],
-            },
-          }
-        );
-        let highPositionPlayer = players.reduce((a, b) => {
-          return a.position > b.position ? a : b;
-        }, players[0]);
-
-        let updatedPositions = {};
-        for (let player of players) {
-          updatedPositions[player._id] =
-            player.position === highPositionPlayer.position
-              ? 1
-              : player.position + 1;
-        }
-
-        for (let [id, newPosition] of Object.entries(updatedPositions)) {
-          await User.updateOne({ _id: id }, { position: newPosition });
-        }
-
-        await User.updateOne({ position: 1 }, { $inc: { stack: -25 } });
-        await User.updateOne({ position: 2 }, { $inc: { stack: -50 } });
-        await User.updateOne(
-          { position: 1 },
-          { $set: { lastBet: 25, preFlopLastBet: 25 } }
-        );
-        await User.updateOne(
-          { position: 2 },
-          { $set: { lastBet: 50, preFlopLastBet: 50 } }
-        );
-
-        await User.updateMany({}, { $set: { currentPlayerId: false } });
-
-        await User.updateOne(
-          { position: 3 },
-          { $set: { currentPlayerId: true } }
-        );
-
-        console.log("Начинаем новый раунд");
-        clearFlop();
-        socket.emit("updatePositions", "Позиции игроков успешно обновлены.");
-      } catch (error) {
-        console.error(error);
-        socket.emit("dealError", {
-          message: "Ошибка при смене позиций игроков",
-          error: error.message,
-        });
-      }
-    });
-
-    socket.on("resetFlop", async () => {
-      try {
-        console.log("Очищаем флоп");
-        io.emit("resetFlop", tableCards);
-      } catch (error) {
-        console.error(error);
-        io.emit("dealError", {
-          message: "Ошибка при очистке карт стола",
-        });
-      }
-    });
     socket.on("disconnect", () => {
       console.log("Client disconnected");
       for (const roomId of Object.keys(roomStates)) {
