@@ -39,8 +39,7 @@ function initializeSocket(server) {
     updatePosition: false,
   };
 
-  // Функция для перемешивания карт в колоде
-  async function shuffleDeck() {
+  const shuffleDeck = () => {
     const deck = [];
     suits.forEach((suit) => {
       values.forEach((value) => {
@@ -51,12 +50,10 @@ function initializeSocket(server) {
       const j = Math.floor(Math.random() * (i + 1));
       [deck[i], deck[j]] = [deck[j], deck[i]];
     }
-
     return deck;
-  }
+  };
 
-  // Функция для раздачи двух карт каждому игроку
-  async function dealCards(deck, players) {
+  const dealCards = async (deck, players) => {
     playerCards.length = 0;
     deckWithoutPlayerCards.length = 0;
 
@@ -70,7 +67,7 @@ function initializeSocket(server) {
     }
 
     return playerCards;
-  }
+  };
 
   async function clearFlop() {
     return (tableCards.length = 0);
@@ -191,6 +188,17 @@ function initializeSocket(server) {
       await clearFlop();
       await dealFlopCards();
 
+      const lastCurrentPlayer = players.find(
+        (player) => player.currentPlayerId === true
+      );
+
+      if (lastCurrentPlayer) {
+        await User.updateOne(
+          { _id: lastCurrentPlayer._id },
+          { $set: { currentPlayerId: false } }
+        );
+      }
+
       const bbPlayer = await User.findOne({ position: 2 });
       await User.updateMany({}, { lastBet: 0 });
 
@@ -205,17 +213,6 @@ function initializeSocket(server) {
           ? currentPlayer
           : minPlayer;
       });
-
-      const lastCurrentPlayer = players.find(
-        (player) => player.currentPlayerId === true
-      );
-
-      if (lastCurrentPlayer) {
-        await User.updateOne(
-          { _id: lastCurrentPlayer._id },
-          { $set: { currentPlayerId: false } }
-        );
-      }
 
       await User.updateOne(
         { _id: minPlayer._id },
@@ -584,11 +581,9 @@ function initializeSocket(server) {
     socket.on("getPlayers", async (roomId) => {
       try {
         const players = await User.find({ roomId: roomId });
-
         await handleGiveFlop(roomId);
         await handleGiveTurn(roomId);
         await handleGiveRiver(roomId);
-
         const updatePosition = await findWinnerTrigger(roomId);
         gameState.updatePosition = updatePosition;
 
