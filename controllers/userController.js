@@ -1,7 +1,6 @@
 const User = require("../models/modelUser");
 const Room = require("../models/room");
 
-
 //Информация о столе
 exports.getPlayers = async (req, res) => {
   try {
@@ -25,7 +24,7 @@ exports.leave = async (req, res) => {
         .status(404)
         .json(`Игрок ${player} не найден в комнате ${roomId}.`);
     }
-  
+
     await Room.updateOne({ _id: roomId }, { $pull: { users: user._id } });
 
     await User.findOneAndDelete({ _id: user._id });
@@ -37,8 +36,6 @@ exports.leave = async (req, res) => {
       .json({ message: "Ошибка при удалении игрока", error: error.message });
   }
 };
-
-
 
 //Поднимаем ставку
 exports.raise = async (req, res) => {
@@ -140,8 +137,8 @@ exports.coll = async (req, res) => {
   try {
     const { name } = req.body;
     const player = await User.findOne({ name });
-    await User.updateOne({ _id: player._id }, { $set: { makeTurn: true } });
     const players = await User.find({});
+    await User.updateOne({ _id: player._id }, { $set: { makeTurn: true } });
 
     if (!player) {
       return res.status(404).json({ message: "Юзер не найден" });
