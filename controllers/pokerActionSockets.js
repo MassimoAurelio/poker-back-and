@@ -134,6 +134,7 @@ function initializeSocket(server) {
 
     try {
       const players = await User.find({ roomId: roomId, fold: false });
+
       const activePlayers = players.filter(
         (player) =>
           player.fold === false &&
@@ -245,7 +246,12 @@ function initializeSocket(server) {
   async function handleGiveFlop(roomId) {
     const shouldDealFlop = await giveFlop(roomId);
     if (shouldDealFlop) {
-      await dealFlopCard(roomId);
+      const delayedFunction = async () => {
+        await dealFlopCard(roomId);
+      };
+      setTimeout(async () => {
+        await delayedFunction();
+      }, 1000);
     }
   }
 
@@ -360,7 +366,13 @@ function initializeSocket(server) {
   async function handleGiveTurn(roomId) {
     const shouldDealTurn = await giveTurn(roomId);
     if (shouldDealTurn) {
-      await dealTurnCard(roomId);
+      const delayedFunction = async () => {
+        await dealTurnCard(roomId);
+      };
+
+      setTimeout(async () => {
+        await delayedFunction();
+      }, 1000);
     }
   }
 
@@ -470,7 +482,12 @@ function initializeSocket(server) {
   async function handleGiveRiver(roomId) {
     const shouldDealRiver = await giveRiver(roomId);
     if (shouldDealRiver) {
-      await dealRiver(roomId);
+      const delayedFunction = async () => {
+        await dealRiver(roomId);
+      };
+      setTimeout(async () => {
+        await delayedFunction();
+      });
     }
   }
 
