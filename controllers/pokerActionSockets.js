@@ -39,7 +39,7 @@ function initializeSocket(server) {
     updatePosition: false,
   };
 
-  const shuffleDeck = () => {
+  const shuffleDeck = async () => {
     const deck = [];
     suits.forEach((suit) => {
       values.forEach((value) => {
@@ -124,7 +124,7 @@ function initializeSocket(server) {
 
   let isTrueFlopCard = false;
   let isDealingFlopCard = false;
-
+  //ТРИГГЕР ФЛОПА
   async function giveFlop(roomId) {
     if (isTrueFlopCard) {
       return;
@@ -157,10 +157,10 @@ function initializeSocket(server) {
           (player) => player.preFlopLastBet === maxBet.preFlopLastBet
         );
         if (allSameMaxBet) {
-          console.log(
-            `ВЫЗЫВАЕМ giveFlop в позиции ${JSON.stringify(isTrueFlopCard)}`
-          );
           if (!isDealingFlopCard) {
+            console.log(
+              `ВЫЗЫВАЕМ giveFlop в позиции ${JSON.stringify(isTrueFlopCard)}`
+            );
             return true;
           }
         }
@@ -172,7 +172,7 @@ function initializeSocket(server) {
       isTrueFlopCard = false;
     }
   }
-
+  //ВЫДАЧА ФЛОПА
   async function dealFlopCard(roomId) {
     if (tableCards.length >= 3) {
       return;
@@ -184,6 +184,10 @@ function initializeSocket(server) {
     isDealingFlopCard = true;
 
     try {
+      await User.updateMany(
+        { roomId: roomId },
+        { $set: { currentPlayerId: false } }
+      );
       const players = await User.find({ fold: false, roomId: roomId });
       await clearFlop();
       await dealFlopCards();
@@ -227,9 +231,14 @@ function initializeSocket(server) {
       console.log(`FLOP: ${JSON.stringify(tableCards)}`);
       io.emit("dealFlop", { flop: { tableCards } });
     } catch (error) {
+      io.emit("dealError", {
+        message: "Ошибка при получении списка игроков",
+        error: error.message,
+      });
       console.error("Error in dealFlopCard event:", error);
     } finally {
       isDealingFlopCard = false;
+      console.log(`Сбрасываем isDealingFlopCard в finally блоке`);
     }
   }
 
@@ -242,7 +251,7 @@ function initializeSocket(server) {
 
   let isTrueTurnCard = false;
   let isDealingTurnCard = false;
-
+  //ТРИГГЕР ТЕРНА
   async function giveTurn(roomId) {
     if (isTrueTurnCard) {
       return;
@@ -357,6 +366,7 @@ function initializeSocket(server) {
 
   let isTrueRiverCard = false;
   let isDealingRiverCard = false;
+  //ТРИГГЕР РИВЕР
   async function giveRiver(roomId) {
     if (isTrueRiverCard) {
       return;
@@ -382,7 +392,7 @@ function initializeSocket(server) {
 
       if (allSameMaxBet) {
         console.log(
-          `ВЫЗЫВАЕМ giveRiver в позиции ${JSON.stringify(isTrueFlopCard)}`
+          `ВЫЗЫВАЕМ giveRiver в позиции ${JSON.stringify(isDealingRiverCard)}`
         );
         if (!isDealingRiverCard) {
           return true;
@@ -396,7 +406,7 @@ function initializeSocket(server) {
       isTrueRiverCard = false;
     }
   }
-
+  //ВЫДАЧА РИВЕР
   async function dealRiver(roomId) {
     if (tableCards.length >= 5) {
       return;
@@ -464,15 +474,46 @@ function initializeSocket(server) {
     }
   }
 
+  let newRoundBlocker = false;
+  async function startNewRound(roomId) {
+    if (newRoundBlocker) {
+      return;
+    }
+    newRoundBlocker = true;
+    try {
+      await User.updateMany(
+        { roomId: roomId },
+        {
+          $set: {
+            flopLastBet: 0,
+            turnLastBet: 0,
+            riverLastBet: 0,
+            fold: false,
+            roundStage: "preflop",
+            makeTurn: false,
+            cards: [],
+          },
+        }
+      );
+      console.log("Начинаем новый раунд");
+      clearFlop();
+      io.emit("startNewRound", "Начинаем новый раунд");
+    } catch (error) {
+      console.error(error);
+    } finally {
+      newRoundBlocker = false;
+    }
+  }
+
+  //ОБНОВЛЕНИЕ ПОЗИЦИЙ НАЧАЛА НОВОГО РАУНДА
   let repeateUpdatePosBlock = false;
   async function updatePos(roomId) {
+    if (repeateUpdatePosBlock) {
+      return;
+    }
+    repeateUpdatePosBlock = true;
     try {
       const players = await User.find({ roomId: roomId });
-
-      if (repeateUpdatePosBlock) {
-        return;
-      }
-      repeateUpdatePosBlock = true;
 
       await User.updateMany(
         {},
@@ -524,7 +565,6 @@ function initializeSocket(server) {
         { $set: { currentPlayerId: true } }
       );
 
-      console.log("Начинаем новый раунд");
       clearFlop();
       io.emit("updatePositions", "Позиции игроков успешно обновлены.");
       io.emit("clearTableCards");
@@ -538,7 +578,7 @@ function initializeSocket(server) {
       repeateUpdatePosBlock = false;
     }
   }
-
+  //ТРИГГЕР ОБНОВЛЕНИЯ ПОЗИЦИЙ НАЧАЛА НОВОГО РАУНДА
   let findWinnerTriggerBlocker = false;
   async function findWinnerTrigger(roomId) {
     if (findWinnerTriggerBlocker) {
@@ -660,6 +700,7 @@ function initializeSocket(server) {
         roomStates[roomId].playerCount++;
 
         if (roomStates[roomId].playerCount === 3) {
+          startNewRound(roomId);
           startCardDistribution(roomId);
         }
 
