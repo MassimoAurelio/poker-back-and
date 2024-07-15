@@ -13,7 +13,7 @@ const userSchema = new mongoose.Schema(
     },
     roomId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Room", 
+      ref: "Room",
       required: true,
     },
     currentPlayerId: {
@@ -48,9 +48,13 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
-    startRound:{
-      type:Boolean,
-      default:false
+    allIn: {
+      type: Boolean,
+      default: null,
+    },
+    allInColl: {
+      type: Boolean,
+      default: null,
     },
     cards: [
       {
@@ -63,7 +67,6 @@ const userSchema = new mongoose.Schema(
       enum: ["preflop", "flop", "turn", "river"],
       default: "preflop",
     },
-  
   },
   {
     timestamps: true,

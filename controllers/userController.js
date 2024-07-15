@@ -37,14 +37,12 @@ exports.leave = async (req, res) => {
   }
 };
 
-//Поднимаем ставку
+// Поднимаем ставку
 exports.raise = async (req, res) => {
   try {
     const { name, raiseAmount } = req.body;
 
     const player = await User.findOne({ name });
-
-    await User.updateOne({ _id: player._id }, { $set: { makeTurn: true } });
 
     if (!player) {
       return res.status(404).json(`Игрок ${name} не найден`);
@@ -83,7 +81,14 @@ exports.raise = async (req, res) => {
         return res.status(400).json({ message: "Неизвестная стадия игры" });
     }
 
-    await User.updateOne({ name }, updateData);
+    // Обновляем основные данные игрока
+    await User.updateOne({ _id: player._id }, updateData);
+
+    // Проверяем стек игрока после обновления
+    const updatedPlayer = await User.findById(player._id).lean();
+    if (updatedPlayer.stack === 0) {
+      await User.updateOne({ _id: player._id }, { $set: { allIn: true } });
+    }
 
     res.status(200).json({ message: "Ставка рейза успешно выполнена" });
   } catch (error) {
@@ -146,6 +151,8 @@ exports.coll = async (req, res) => {
     if (players.length === 0) {
       return res.status(404).json({ message: "Юзеры не найдены" });
     }
+
+    const allInPlayers = players.filter((p) => p.allIn === true);
 
     const currentRoundStage = player.roundStage;
 
@@ -214,6 +221,13 @@ exports.coll = async (req, res) => {
         },
       }
     );
+
+    const updatedPlayer = await User.findById(player._id).lean();
+    if (updatedPlayer.stack === 0) {
+      await User.updateOne({ _id: player._id }, { $set: { allIn: true } });
+    } else if (allInPlayers.length > 0 && player.stack >= callAmount) {
+      await User.updateOne({ _id: player._id }, { $set: { allInColl: true } });
+    }
 
     res.status(200).json("OK");
   } catch (error) {

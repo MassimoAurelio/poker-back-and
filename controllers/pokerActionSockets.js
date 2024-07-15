@@ -70,6 +70,12 @@ function initializeSocket(server) {
     return playerCards;
   };
 
+  const delayedFunction = async (roomId, ...functions) => {
+    for (let func of functions) {
+      await func(roomId);
+    }
+  };
+
   //Очистка карт на столе
   async function clearTable() {
     return (tableCards.length = 0);
@@ -581,8 +587,17 @@ function initializeSocket(server) {
             player.riverLastBet === maxBet.riverLastBet &&
             player.makeTurn === true
         );
-
-        updatePositionTriggerBlocker = false;
+        if (allSameMaxBet) {
+          console.log(
+            `ВЫЗЫВАЕМ giveRiver в позиции ${JSON.stringify(isTrueRiverCard)}`
+          );
+          if (!repeateUpdatePosBlock) {
+            updatePositionTriggerBlocker = false;
+            return true;
+          }
+        } else {
+          return false;
+        }
         return allSameMaxBet;
       }
     } catch (error) {
@@ -601,7 +616,6 @@ function initializeSocket(server) {
     repeateUpdatePosBlock = true;
     try {
       const players = await User.find({ roomId: roomId });
-
       await User.updateMany(
         {},
         {
@@ -613,6 +627,7 @@ function initializeSocket(server) {
             riverLastBet: 0,
             fold: false,
             roundStage: "preflop",
+            allIn: false,
             makeTurn: false,
             cards: [],
           },
@@ -776,6 +791,93 @@ function initializeSocket(server) {
     }
   }
 
+  let giveAllInWinnerBlocker = false;
+  let allInWinnerBlocker = false;
+
+  async function giveAllInWinner(roomId) {
+    if (giveAllInWinnerBlocker) {
+      return;
+    }
+    giveAllInWinnerBlocker = true;
+    try {
+      const players = await User.find({ roomId: roomId });
+      const allPlayersMakeTurn = players.every(
+        (player) => player.makeTurn === true
+      );
+
+      if (allPlayersMakeTurn) {
+        return;
+      }
+
+      // Найти игрока, который сделал all-in
+      const allInPlayer = players.find(
+        (player) => player.stack === 0 && player.allIn
+      );
+
+      if (allInPlayer) {
+        // Проверить, что хотя бы один игрок сделал колл
+        const hasCaller = players.some(
+          (player) => player.allInColl === true && player.makeTurn === true
+        );
+
+        if (hasCaller) {
+          // Если есть колл, продолжить выполнение логики
+          if (!allInWinnerBlocker) {
+            return true;
+          } else {
+            return false;
+          }
+        } else {
+          // Если никто не сделал колл
+          return false;
+        }
+      }
+    } catch (error) {
+      console.error(error);
+    } finally {
+      giveAllInWinnerBlocker = false;
+    }
+  }
+
+  async function allInWinner(roomId) {
+    if (allInWinnerBlocker) {
+      return;
+    }
+    allInWinnerBlocker = true;
+    try {
+      if (tableCards.length === 0) {
+        await dealFlopCards();
+        await dealOneCard();
+        await dealOneCard();
+        await findWinnerRiver(roomId);
+      } else if (tableCards.length === 3) {
+        await dealOneCard();
+        await dealOneCard();
+        await findWinnerRiver(roomId);
+      } else if (tableCards.length === 4) {
+        await dealOneCard();
+        await findWinnerRiver(roomId);
+      }
+    } catch (error) {
+      console.error(error);
+    } finally {
+      allInWinnerBlocker = false;
+    }
+  }
+
+  async function handleGiveAllInWinner(roomId) {
+    const allIn = await giveAllInWinner(roomId);
+    if (allIn) {
+      const delayedFunction = async () => {
+        await allInWinner(roomId);
+        await updatePos(roomId);
+      };
+      setTimeout(async () => {
+        await delayedFunction();
+      });
+    }
+  }
+
   io.on("connection", (socket) => {
     console.log("New client connected");
     socket.on("getPlayers", async (roomId) => {
@@ -784,6 +886,7 @@ function initializeSocket(server) {
         await handleGiveFlop(roomId);
         await handleGiveTurn(roomId);
         await handleGiveRiver(roomId);
+        await handleGiveAllInWinner(roomId);
         const updatePosition = await updatePositionTrigger(roomId);
         gameState.updatePosition = updatePosition;
 
@@ -794,7 +897,6 @@ function initializeSocket(server) {
         if (players.length === 0) {
           io.emit("clearTableCards");
         }
-
         socket.emit("playersData", players);
       } catch (error) {
         socket.emit("getPlayersError", {
