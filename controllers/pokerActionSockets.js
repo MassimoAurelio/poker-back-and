@@ -613,7 +613,6 @@ function initializeSocket(server) {
   }
 
   //ОБНОВЛЕНИЕ ПОЗИЦИЙ НАЧАЛА НОВОГО РАУНДА
-
   async function updatePos(roomId) {
     if (repeateUpdatePosBlock) {
       return;
@@ -621,10 +620,8 @@ function initializeSocket(server) {
     repeateUpdatePosBlock = true;
     try {
       const players = await User.find({ roomId: roomId });
-      const lastSbPlayer = await User.find({ roomId: roomId, position: 1 });
-      const lastBbPlayer = await User.find({ roomId: roomId, position: 2 });
       await User.updateMany(
-        {},
+        { roomId: roomId },
         {
           $set: {
             lastBet: 0,
@@ -657,42 +654,41 @@ function initializeSocket(server) {
         await User.updateOne({ _id: id }, { position: newPosition });
       }
 
-      const sbPlayer = await User.updateOne(
+      const sbPlayer = await User.findOneAndUpdate(
         { position: 1 },
-        { $inc: { stack: -25 } }
+        {
+          $inc: { stack: -25 },
+          $set: { lastBet: 25, preFlopLastBet: 25 },
+        },
+        { new: true }
       );
-      const bbPlayer = await User.updateOne(
+      if (sbPlayer.stack < 0) {
+        await User.updateOne({ _id: sbPlayer._id }, { $set: { fold: true } });
+      }
+
+      const bbPlayer = await User.findOneAndUpdate(
         { position: 2 },
-        { $inc: { stack: -50 } }
+        {
+          $inc: { stack: -50 },
+          $set: { lastBet: 50, preFlopLastBet: 50 },
+        },
+        { new: true }
       );
-      if (sbPlayer.stack >= 25) {
-        await User.updateOne(
-          { position: 1 },
-          { $set: { lastBet: 25, preFlopLastBet: 25 } }
-        );
-      } else {
-        await User.updateOne({ stack: -25 || 0 }, { $set: { fold: true } });
+      if (bbPlayer.stack < 0) {
+        await User.updateOne({ _id: bbPlayer._id }, { $set: { fold: true } });
       }
 
-      if (bbPlayer.stack >= 50) {
-        await User.updateOne(
-          { position: 2 },
-          { $set: { lastBet: 50, preFlopLastBet: 50 } }
-        );
-      } else {
-        await User.updateOne({ stack: -50 || 0 }, { $set: { fold: true } });
-      }
-
-      await User.updateMany({}, { $set: { currentPlayerId: false } });
-
+      await User.updateMany(
+        { roomId: roomId },
+        { $set: { currentPlayerId: false } }
+      );
       await User.updateOne(
-        { position: 3 },
+        { position: 3, roomId: roomId },
         { $set: { currentPlayerId: true } }
       );
 
       clearTable();
       await startCardDistribution(roomId);
-      console.log("ОБНОВЛЯЕМ ПОЗИЦИИ");
       io.emit("updatePositions", "Позиции игроков успешно обновлены.");
       io.emit("clearTableCards");
     } catch (error) {
@@ -868,18 +864,18 @@ function initializeSocket(server) {
     try {
       if (tableCards.length === 0) {
         console.log("Попали в tableCards.length === 0 allInWinner");
-        await dealFlopCards();
-        await dealOneCard();
-        await dealOneCard();
-        await findWinnerRiver(roomId);
+        await dealFlopCard(roomId);
+        await dealTurnCard(roomId);
+        await dealRiver(roomId);
+         await findWinnerRiver(roomId);
       } else if (tableCards.length === 3) {
         console.log("Попали в tableCards.length === 3 allInWinner");
-        await dealOneCard();
-        await dealOneCard();
+        await dealTurnCard(roomId);
+        await dealRiver(roomId);
         await findWinnerRiver(roomId);
       } else if (tableCards.length === 4) {
         console.log("Попали в tableCards.length === 4 allInWinner");
-        await dealOneCard();
+        await dealRiver(roomId);
         await findWinnerRiver(roomId);
       }
     } catch (error) {

@@ -56,7 +56,7 @@ exports.raise = async (req, res) => {
 
     let updateData = {
       $inc: { stack: -raiseAmount },
-      $set: {},
+      $set: { makeTurn: true },
     };
 
     const currentRoundStage = player.roundStage;
