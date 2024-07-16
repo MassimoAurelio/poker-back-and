@@ -86,10 +86,12 @@ function initializeSocket(server) {
     tableCards.push(deckWithoutPlayerCards.pop());
     tableCards.push(deckWithoutPlayerCards.pop());
     tableCards.push(deckWithoutPlayerCards.pop());
+    console.log("Выдаем карты флопа");
   }
   // Функция для раздачи одной карты (терна,ривера)
   async function dealOneCard() {
     tableCards.push(deckWithoutPlayerCards.pop());
+    console.log("Выдаем одну карту");
   }
 
   // Функция для начала раздачи карт
@@ -157,24 +159,27 @@ function initializeSocket(server) {
       }
 
       if (activePlayers.length > 2) {
-        const maxBet = activePlayers.reduce((maxSum, currentPlayer) =>
-          maxSum.preFlopLastBet > currentPlayer.preFlopLastBet
-            ? maxSum
-            : currentPlayer
-        );
+        const allInPlayer = players.find((player) => player.allIn);
+        if (!allInPlayer) {
+          const maxBet = activePlayers.reduce((maxSum, currentPlayer) =>
+            maxSum.preFlopLastBet > currentPlayer.preFlopLastBet
+              ? maxSum
+              : currentPlayer
+          );
 
-        const allSameMaxBet = activePlayers.every(
-          (player) => player.preFlopLastBet === maxBet.preFlopLastBet
-        );
-        if (allSameMaxBet) {
-          if (!isDealingFlopCard) {
-            console.log(
-              `ВЫЗЫВАЕМ giveFlop в позиции ${JSON.stringify(isTrueFlopCard)}`
-            );
-            return true;
+          const allSameMaxBet = activePlayers.every(
+            (player) => player.preFlopLastBet === maxBet.preFlopLastBet
+          );
+          if (allSameMaxBet) {
+            if (!isDealingFlopCard) {
+              console.log(
+                `ВЫЗЫВАЕМ giveFlop в позиции ${JSON.stringify(isTrueFlopCard)}`
+              );
+              return true;
+            }
           }
+          return false;
         }
-        return false;
       }
     } catch (error) {
       console.error("Error in giveFlop event:", error);
@@ -616,6 +621,8 @@ function initializeSocket(server) {
     repeateUpdatePosBlock = true;
     try {
       const players = await User.find({ roomId: roomId });
+      const lastSbPlayer = await User.find({ roomId: roomId, position: 1 });
+      const lastBbPlayer = await User.find({ roomId: roomId, position: 2 });
       await User.updateMany(
         {},
         {
@@ -627,7 +634,8 @@ function initializeSocket(server) {
             riverLastBet: 0,
             fold: false,
             roundStage: "preflop",
-            allIn: false,
+            allIn: null,
+            allInColl: null,
             makeTurn: false,
             cards: [],
           },
@@ -649,16 +657,31 @@ function initializeSocket(server) {
         await User.updateOne({ _id: id }, { position: newPosition });
       }
 
-      await User.updateOne({ position: 1 }, { $inc: { stack: -25 } });
-      await User.updateOne({ position: 2 }, { $inc: { stack: -50 } });
-      await User.updateOne(
+      const sbPlayer = await User.updateOne(
         { position: 1 },
-        { $set: { lastBet: 25, preFlopLastBet: 25 } }
+        { $inc: { stack: -25 } }
       );
-      await User.updateOne(
+      const bbPlayer = await User.updateOne(
         { position: 2 },
-        { $set: { lastBet: 50, preFlopLastBet: 50 } }
+        { $inc: { stack: -50 } }
       );
+      if (sbPlayer.stack >= 25) {
+        await User.updateOne(
+          { position: 1 },
+          { $set: { lastBet: 25, preFlopLastBet: 25 } }
+        );
+      } else {
+        await User.updateOne({ stack: -25 || 0 }, { $set: { fold: true } });
+      }
+
+      if (bbPlayer.stack >= 50) {
+        await User.updateOne(
+          { position: 2 },
+          { $set: { lastBet: 50, preFlopLastBet: 50 } }
+        );
+      } else {
+        await User.updateOne({ stack: -50 || 0 }, { $set: { fold: true } });
+      }
 
       await User.updateMany({}, { $set: { currentPlayerId: false } });
 
@@ -669,6 +692,7 @@ function initializeSocket(server) {
 
       clearTable();
       await startCardDistribution(roomId);
+      console.log("ОБНОВЛЯЕМ ПОЗИЦИИ");
       io.emit("updatePositions", "Позиции игроков успешно обновлены.");
       io.emit("clearTableCards");
     } catch (error) {
@@ -801,34 +825,31 @@ function initializeSocket(server) {
     giveAllInWinnerBlocker = true;
     try {
       const players = await User.find({ roomId: roomId });
-      const allPlayersMakeTurn = players.every(
-        (player) => player.makeTurn === true
-      );
+      const allPlayersMakeTurn = players.every((player) => player.makeTurn);
 
-      if (allPlayersMakeTurn) {
+      if (!allPlayersMakeTurn) {
         return;
       }
 
-      // Найти игрока, который сделал all-in
       const allInPlayer = players.find(
         (player) => player.stack === 0 && player.allIn
       );
 
       if (allInPlayer) {
-        // Проверить, что хотя бы один игрок сделал колл
-        const hasCaller = players.some(
-          (player) => player.allInColl === true && player.makeTurn === true
-        );
+        const allPlayersMadeTurn = players.every((player) => player.makeTurn);
 
-        if (hasCaller) {
-          // Если есть колл, продолжить выполнение логики
-          if (!allInWinnerBlocker) {
-            return true;
-          } else {
-            return false;
+        if (allPlayersMadeTurn) {
+          const hasCallerOrNotAllIn = players.some(
+            (player) => player.makeTurn && player.allIn
+          );
+          if (hasCallerOrNotAllIn) {
+            if (!allInWinnerBlocker) {
+              return true;
+            } else {
+              return false;
+            }
           }
         } else {
-          // Если никто не сделал колл
           return false;
         }
       }
@@ -846,15 +867,18 @@ function initializeSocket(server) {
     allInWinnerBlocker = true;
     try {
       if (tableCards.length === 0) {
+        console.log("Попали в tableCards.length === 0 allInWinner");
         await dealFlopCards();
         await dealOneCard();
         await dealOneCard();
         await findWinnerRiver(roomId);
       } else if (tableCards.length === 3) {
+        console.log("Попали в tableCards.length === 3 allInWinner");
         await dealOneCard();
         await dealOneCard();
         await findWinnerRiver(roomId);
       } else if (tableCards.length === 4) {
+        console.log("Попали в tableCards.length === 4 allInWinner");
         await dealOneCard();
         await findWinnerRiver(roomId);
       }

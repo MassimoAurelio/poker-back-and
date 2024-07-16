@@ -87,7 +87,10 @@ exports.raise = async (req, res) => {
     // Проверяем стек игрока после обновления
     const updatedPlayer = await User.findById(player._id).lean();
     if (updatedPlayer.stack === 0) {
-      await User.updateOne({ _id: player._id }, { $set: { allIn: true } });
+      await User.updateOne(
+        { _id: player._id },
+        { $set: { allIn: true, makeTurn: true } }
+      );
     }
 
     res.status(200).json({ message: "Ставка рейза успешно выполнена" });
@@ -96,20 +99,29 @@ exports.raise = async (req, res) => {
   }
 };
 
-//Сбрасываем карты
+// Сбрасываем карты
 exports.fold = async (req, res) => {
   try {
     const { name } = req.body;
-
     const player = await User.findOne({ name });
-    await User.updateOne({ _id: player._id }, { $set: { makeTurn: true } });
-
     if (!player) {
       return res.status(404).json({ message: "Игрок не найден" });
     }
 
-    await User.updateOne({ _id: player._id }, { fold: true });
+    const players = await User.find({});
 
+    const allInPlayer = players.find((p) => p.allIn);
+    if (allInPlayer) {
+      await User.updateOne(
+        { _id: player._id },
+        { $set: { fold: true, allIn: false, makeTurn: true } }
+      );
+    } else {
+      await User.updateOne(
+        { _id: player._id },
+        { $set: { fold: true, makeTurn: true } }
+      );
+    }
     res.status(200).json({ message: `Игрок ${name} пропустил ход` });
   } catch (error) {
     res.status(500).json({ message: error.message });
