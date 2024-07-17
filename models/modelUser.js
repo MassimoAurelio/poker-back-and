@@ -56,6 +56,10 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: null,
     },
+    loser: {
+      type: Boolean,
+      default: false,
+    },
     cards: [
       {
         value: String,

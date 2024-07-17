@@ -620,6 +620,7 @@ function initializeSocket(server) {
     repeateUpdatePosBlock = true;
     try {
       const players = await User.find({ roomId: roomId });
+      //сбрасываем все до бланка
       await User.updateMany(
         { roomId: roomId },
         {
@@ -634,20 +635,25 @@ function initializeSocket(server) {
             allIn: null,
             allInColl: null,
             makeTurn: false,
+            loser: false,
             cards: [],
           },
         }
       );
+
+      //находим игрока с самой большой позицией
       let highPositionPlayer = players.reduce((a, b) => {
         return a.position > b.position ? a : b;
       }, players[0]);
 
       let updatedPositions = {};
+
       for (let player of players) {
-        updatedPositions[player._id] =
-          player.position === highPositionPlayer.position
-            ? 1
-            : player.position + 1;
+        if (player.position === highPositionPlayer.position) {
+          updatedPositions[player._id] = 1;
+        } else {
+          updatedPositions[player._id] = player.position + 1;
+        }
       }
 
       for (let [id, newPosition] of Object.entries(updatedPositions)) {
@@ -703,9 +709,9 @@ function initializeSocket(server) {
   }
 
   // ОПРЕДЕЛЯЕМ ПОБЕДИТЕЛЯ
-  let findWinnerBlocker = false;
-
   async function findWinnerRiver(roomId) {
+    let findWinnerBlocker = false;
+
     if (findWinnerBlocker) {
       return;
     }
@@ -799,9 +805,16 @@ function initializeSocket(server) {
         console.log(
           `Победитель: ${winners.join(", ")} выиграл ${winningsPerWinner}`
         );
+
+        await User.updateMany(
+          { stack: { $lte: 0 } },
+          { $set: { loser: true } }
+        );
+
         return { winners, winnerSum: potSize };
       } else {
         console.log(`Нет победителей`);
+
         return { winners: [], winnerSum: 0 };
       }
     } catch (error) {
@@ -811,6 +824,7 @@ function initializeSocket(server) {
     }
   }
 
+  
   let giveAllInWinnerBlocker = false;
   let allInWinnerBlocker = false;
 
@@ -867,7 +881,7 @@ function initializeSocket(server) {
         await dealFlopCard(roomId);
         await dealTurnCard(roomId);
         await dealRiver(roomId);
-         await findWinnerRiver(roomId);
+        await findWinnerRiver(roomId);
       } else if (tableCards.length === 3) {
         console.log("Попали в tableCards.length === 3 allInWinner");
         await dealTurnCard(roomId);
