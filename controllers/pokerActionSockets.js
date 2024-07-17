@@ -641,6 +641,8 @@ function initializeSocket(server) {
         }
       );
 
+      console.log("Возвращаем модель к исходному состоянию");
+
       //находим игрока с самой большой позицией
       let highPositionPlayer = players.reduce((a, b) => {
         return a.position > b.position ? a : b;
@@ -680,7 +682,7 @@ function initializeSocket(server) {
         },
         { new: true }
       );
-      if (bbPlayer.stack < 0) {
+      if (bbPlayer?.stack < 0) {
         await User.updateOne({ _id: bbPlayer._id }, { $set: { fold: true } });
       }
 
@@ -824,7 +826,6 @@ function initializeSocket(server) {
     }
   }
 
-  
   let giveAllInWinnerBlocker = false;
   let allInWinnerBlocker = false;
 
@@ -902,13 +903,8 @@ function initializeSocket(server) {
   async function handleGiveAllInWinner(roomId) {
     const allIn = await giveAllInWinner(roomId);
     if (allIn) {
-      const delayedFunction = async () => {
-        await allInWinner(roomId);
-        await updatePos(roomId);
-      };
-      setTimeout(async () => {
-        await delayedFunction();
-      });
+      await allInWinner(roomId);
+      await updatePos(roomId);
     }
   }
 
