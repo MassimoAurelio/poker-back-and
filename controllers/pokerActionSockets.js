@@ -540,10 +540,11 @@ function initializeSocket(server) {
 
   // ТРИГГЕР ОБНОВЛЕНИЯ ПОЗИЦИЙ НАЧАЛА НОВОГО РАУНДА
   let updatePositionTriggerBlocker = false;
+  let findWinnerBlocker = false;
   let repeateUpdatePosBlock = false;
 
   async function updatePositionTrigger(roomId) {
-    if (updatePositionTriggerBlocker) {
+    if (updatePositionTriggerBlocker || repeateUpdatePosBlock) {
       return;
     }
     updatePositionTriggerBlocker = true;
@@ -614,13 +615,12 @@ function initializeSocket(server) {
 
   //ОБНОВЛЕНИЕ ПОЗИЦИЙ НАЧАЛА НОВОГО РАУНДА
   async function updatePos(roomId) {
-    if (repeateUpdatePosBlock) {
+    if (repeateUpdatePosBlock || updatePositionTriggerBlocker) {
       return;
     }
     repeateUpdatePosBlock = true;
     try {
       const players = await User.find({ roomId: roomId });
-      //сбрасываем все до бланка
       await User.updateMany(
         { roomId: roomId },
         {
@@ -643,7 +643,6 @@ function initializeSocket(server) {
 
       console.log("Возвращаем модель к исходному состоянию");
 
-      //находим игрока с самой большой позицией
       let highPositionPlayer = players.reduce((a, b) => {
         return a.position > b.position ? a : b;
       }, players[0]);
@@ -709,11 +708,8 @@ function initializeSocket(server) {
       repeateUpdatePosBlock = false;
     }
   }
-
   // ОПРЕДЕЛЯЕМ ПОБЕДИТЕЛЯ
   async function findWinnerRiver(roomId) {
-    let findWinnerBlocker = false;
-
     if (findWinnerBlocker) {
       return;
     }
