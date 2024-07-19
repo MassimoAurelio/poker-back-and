@@ -288,7 +288,7 @@ function initializeSocket(server) {
         return false;
       }
 
-      if (turnPlayers.length > 2) {
+      if (turnPlayers.length > 0) {
         const maxBet = turnPlayers.reduce((maxSum, currentPlayer) =>
           maxSum.turnLastBet > currentPlayer.turnLastBet
             ? maxSum
@@ -669,7 +669,7 @@ function initializeSocket(server) {
         },
         { new: true }
       );
-      if (sbPlayer.stack < 0) {
+      if (sbPlayer && sbPlayer.stack < 0) {
         await User.updateOne({ _id: sbPlayer._id }, { $set: { fold: true } });
       }
 
@@ -681,7 +681,7 @@ function initializeSocket(server) {
         },
         { new: true }
       );
-      if (bbPlayer?.stack < 0) {
+      if (bbPlayer && bbPlayer.stack < 0) {
         await User.updateOne({ _id: bbPlayer._id }, { $set: { fold: true } });
       }
 
@@ -708,6 +708,7 @@ function initializeSocket(server) {
       repeateUpdatePosBlock = false;
     }
   }
+
   // ОПРЕДЕЛЯЕМ ПОБЕДИТЕЛЯ
   async function findWinnerRiver(roomId) {
     if (findWinnerBlocker) {
@@ -873,18 +874,46 @@ function initializeSocket(server) {
     }
     allInWinnerBlocker = true;
     try {
-      if (tableCards.length === 0) {
+      const players = await User.find({ roomId });
+      let countFoldFalse = 0;
+      let lastStandingPlayer = null;
+      for (let player of players) {
+        if (player.fold === false) {
+          countFoldFalse++;
+          lastStandingPlayer = player;
+        }
+      }
+      if (countFoldFalse === 1 && lastStandingPlayer) {
+        let totalBets = 0;
+        players.forEach((player) => {
+          totalBets +=
+            player.preFlopLastBet +
+            player.flopLastBet +
+            player.turnLastBet +
+            player.riverLastBet;
+        });
+
+        lastStandingPlayer.stack += totalBets;
+        await lastStandingPlayer.save();
+
+        console.log(
+          `Победитель: ${lastStandingPlayer.name} выиграл ${totalBets}`
+        );
+
+        return { winners: [lastStandingPlayer.name], winnerSum: totalBets };
+      }
+      if (tableCards.length === 0 && countFoldFalse > 1) {
         console.log("Попали в tableCards.length === 0 allInWinner");
         await dealFlopCard(roomId);
         await dealTurnCard(roomId);
         await dealRiver(roomId);
         await findWinnerRiver(roomId);
-      } else if (tableCards.length === 3) {
+      } else if (tableCards.length === 3 && countFoldFalse > 1) {
         console.log("Попали в tableCards.length === 3 allInWinner");
         await dealTurnCard(roomId);
         await dealRiver(roomId);
         await findWinnerRiver(roomId);
-      } else if (tableCards.length === 4) {
+      } else if (tableCards.length === 4 && countFoldFalse > 1) {
         console.log("Попали в tableCards.length === 4 allInWinner");
         await dealRiver(roomId);
         await findWinnerRiver(roomId);
