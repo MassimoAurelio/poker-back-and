@@ -41,18 +41,24 @@ exports.leave = async (req, res) => {
 exports.raise = async (req, res) => {
   try {
     const { name, raiseAmount } = req.body;
-
+    const players = await User.find({});
     const player = await User.findOne({ name });
+    const lastBitBet = players.reduce((minBet, currentLastBet) => {
+      return currentLastBet.lastBet > minBet.lastBet ? currentLastBet : minBet;
+    });
 
+    if (raiseAmount <= lastBitBet) {
+      return res.status(404).json(`Невозможно сделать рейз с такой суммой`);
+    }
     if (!player) {
       return res.status(404).json(`Игрок ${name} не найден`);
     }
-
-    if (player.stack < raiseAmount) {
-      return res
-        .status(400)
-        .json({ message: "Недостаточно средств для рейза" });
-    }
+    if (raiseAmount)
+      if (player.stack < raiseAmount) {
+        return res
+          .status(400)
+          .json({ message: "Недостаточно средств для рейза" });
+      }
 
     let updateData = {
       $inc: { stack: -raiseAmount },
