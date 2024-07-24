@@ -43,13 +43,18 @@ exports.raise = async (req, res) => {
     const { name, raiseAmount } = req.body;
     const players = await User.find({});
     const player = await User.findOne({ name });
-    const lastBitBet = players.reduce((minBet, currentLastBet) => {
+    const bB = 50;
+    const lastBigBet = players.reduce((minBet, currentLastBet) => {
       return currentLastBet.lastBet > minBet.lastBet ? currentLastBet : minBet;
     });
 
-    if (raiseAmount <= lastBitBet) {
-      return res.status(404).json(`Невозможно сделать рейз с такой суммой`);
+    const minRaise = lastBigBet.lastBet + bB;
+  
+
+    if (raiseAmount < minRaise) {
+      return;
     }
+
     if (!player) {
       return res.status(404).json(`Игрок ${name} не найден`);
     }
@@ -87,10 +92,8 @@ exports.raise = async (req, res) => {
         return res.status(400).json({ message: "Неизвестная стадия игры" });
     }
 
-    // Обновляем основные данные игрока
     await User.updateOne({ _id: player._id }, updateData);
 
-    // Проверяем стек игрока после обновления
     const updatedPlayer = await User.findById(player._id).lean();
     if (updatedPlayer.stack === 0) {
       await User.updateOne(
