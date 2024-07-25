@@ -49,7 +49,6 @@ exports.raise = async (req, res) => {
     });
 
     const minRaise = lastBigBet.lastBet + bB;
-  
 
     if (raiseAmount < minRaise) {
       return;
@@ -70,11 +69,21 @@ exports.raise = async (req, res) => {
       $set: { makeTurn: true },
     };
 
+    const additionalStack =
+      player.position === 1 ? 25 : player.position === 2 ? 50 : 0;
+
     const currentRoundStage = player.roundStage;
     switch (currentRoundStage) {
       case "preflop":
-        updateData.$inc.preFlopLastBet = raiseAmount;
-        updateData.$set.lastBet = (player.preFlopLastBet || 0) + raiseAmount;
+        updateData.$inc.preFlopLastBet = raiseAmount - additionalStack;
+
+        if (player.position === 1) {
+          updateData.$inc.stack = (updateData.$inc.stack || 0) + 25;
+        } else if (player.position === 2) {
+          updateData.$inc.stack = (updateData.$inc.stack || 0) + 50;
+        }
+
+        updateData.$set.lastBet = raiseAmount;
         break;
       case "flop":
         updateData.$inc.flopLastBet = raiseAmount;
