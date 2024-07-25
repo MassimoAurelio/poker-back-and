@@ -173,6 +173,10 @@ exports.coll = async (req, res) => {
     const { name } = req.body;
     const player = await User.findOne({ name });
     const players = await User.find({});
+    const lastBigBet = players.reduce((minBet, currentLastBet) => {
+      return currentLastBet.lastBet > minBet.lastBet ? currentLastBet : minBet;
+    });
+
     await User.updateOne({ _id: player._id }, { $set: { makeTurn: true } });
 
     if (!player) {
@@ -210,6 +214,10 @@ exports.coll = async (req, res) => {
       bet = maxRiverLastBet.riverLastBet;
     } else {
       return res.status(400).json({ message: "Неверная стадия игры" });
+    }
+
+    if (bet < lastBigBet) {
+      return;
     }
 
     if (bet === 0) {

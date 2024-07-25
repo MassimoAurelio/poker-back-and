@@ -99,6 +99,7 @@ function initializeSocket(server) {
     try {
       const players = await User.find({ roomId: roomId });
 
+
       const emptyCards = players.every((player) => {
         return player.cards.length === 0;
       });
@@ -158,7 +159,7 @@ function initializeSocket(server) {
         return false;
       }
 
-      if (activePlayers.length > 2) {
+      if (activePlayers.length > 1) {
         const allInPlayer = players.find((player) => player.allIn);
         if (!allInPlayer) {
           const maxBet = activePlayers.reduce((maxSum, currentPlayer) =>
