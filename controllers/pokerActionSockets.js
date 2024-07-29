@@ -291,13 +291,14 @@ function initializeSocket(server) {
 
       if (turnPlayers.length > 0) {
         const maxBet = turnPlayers.reduce((maxSum, currentPlayer) =>
-          maxSum.turnLastBet > currentPlayer.turnLastBet
+          maxSum.flopLastBet > currentPlayer.flopLastBet
             ? maxSum
             : currentPlayer
         );
+        console.log(`maxBet ${JSON.stringify(maxBet)}`)
         const allSameMaxBet = turnPlayers.every(
           (player) =>
-            player.turnLastBet === maxBet.turnLastBet &&
+            player.flopLastBet === maxBet.flopLastBet &&
             player.makeTurn === true
         );
         if (allSameMaxBet) {
