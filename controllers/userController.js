@@ -177,14 +177,14 @@ exports.coll = async (req, res) => {
       return currentLastBet.lastBet > minBet.lastBet ? currentLastBet : minBet;
     });
 
-    await User.updateOne({ _id: player._id }, { $set: { makeTurn: true } });
-
     if (!player) {
       return res.status(404).json({ message: "Юзер не найден" });
     }
     if (players.length === 0) {
       return res.status(404).json({ message: "Юзеры не найдены" });
     }
+
+    await User.updateOne({ _id: player._id }, { $set: { makeTurn: true } });
 
     const allInPlayers = players.filter((p) => p.allIn === true);
 
@@ -228,33 +228,32 @@ exports.coll = async (req, res) => {
 
     const callAmount = bet - player.lastBet;
 
-    if (player.stack < callAmount) {
-      return res.status(400).json({
-        message: `У ${player.name} недостаточно фишек для этого колла`,
-      });
-    }
-
     if (callAmount === 0) {
       return res.status(200).json("Игрок уже уровнял самую большую ставку");
     }
 
+    let actualCallAmount = callAmount;
+    if (player.stack < callAmount) {
+      actualCallAmount = player.stack;
+    }
+
     let updateField = {};
     if (currentRoundStage === "preflop") {
-      updateField = { preFlopLastBet: bet };
+      updateField = { preFlopLastBet: player.lastBet + actualCallAmount };
     } else if (currentRoundStage === "flop") {
-      updateField = { flopLastBet: bet };
+      updateField = { flopLastBet: player.lastBet + actualCallAmount };
     } else if (currentRoundStage === "turn") {
-      updateField = { turnLastBet: bet };
+      updateField = { turnLastBet: player.lastBet + actualCallAmount };
     } else if (currentRoundStage === "river") {
-      updateField = { riverLastBet: bet };
+      updateField = { riverLastBet: player.lastBet + actualCallAmount };
     }
 
     await User.updateOne(
       { _id: player._id },
       {
-        $inc: { stack: -callAmount },
+        $inc: { stack: -actualCallAmount },
         $set: {
-          lastBet: player.lastBet + callAmount,
+          lastBet: player.lastBet + actualCallAmount,
           ...updateField,
         },
       }
@@ -263,7 +262,7 @@ exports.coll = async (req, res) => {
     const updatedPlayer = await User.findById(player._id).lean();
     if (updatedPlayer.stack === 0) {
       await User.updateOne({ _id: player._id }, { $set: { allIn: true } });
-    } else if (allInPlayers.length > 0 && player.stack >= callAmount) {
+    } else if (allInPlayers.length > 0 && player.stack >= actualCallAmount) {
       await User.updateOne({ _id: player._id }, { $set: { allInColl: true } });
     }
 

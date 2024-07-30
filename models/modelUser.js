@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { type } = require("os");
 
 const userSchema = new mongoose.Schema(
   {
@@ -15,6 +16,10 @@ const userSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Room",
       required: true,
+    },
+    isDealer: {
+      type: Boolean,
+      default: false,
     },
     currentPlayerId: {
       type: Boolean,

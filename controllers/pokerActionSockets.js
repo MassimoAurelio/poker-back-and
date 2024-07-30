@@ -2,6 +2,7 @@ const socketio = require("socket.io");
 const User = require("../models/modelUser");
 const { Hand } = require("pokersolver");
 const Room = require("../models/room");
+const { shuffleDeck, dealCards } = require("./deckUtils");
 
 function initializeSocket(server) {
   const io = socketio(server, {
@@ -10,23 +11,6 @@ function initializeSocket(server) {
       methods: ["GET", "POST"],
     },
   });
-
-  const suits = ["♥", "♠", "♦", "♣"];
-  const values = [
-    "2",
-    "3",
-    "4",
-    "5",
-    "6",
-    "7",
-    "8",
-    "9",
-    "10",
-    "J",
-    "Q",
-    "K",
-    "A",
-  ];
 
   let tableCards = [];
   const deckWithoutPlayerCards = [];
@@ -39,48 +23,6 @@ function initializeSocket(server) {
     updatePosition: false,
   };
 
-  //Функция перемешивания карт
-  const shuffleDeck = async () => {
-    const deck = [];
-    suits.forEach((suit) => {
-      values.forEach((value) => {
-        deck.push({ value, suit });
-      });
-    });
-    for (let i = deck.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [deck[i], deck[j]] = [deck[j], deck[i]];
-    }
-    return deck;
-  };
-
-  const dealCards = async (deck, players) => {
-    playerCards.length = 0;
-    deckWithoutPlayerCards.length = 0;
-
-    for (let i = 0; i < players.length; i++) {
-      const cards = [deck.pop(), deck.pop()];
-      playerCards.push({ playerId: players[i]._id, cards });
-    }
-
-    while (deck.length > 0) {
-      deckWithoutPlayerCards.push(deck.pop());
-    }
-
-    return playerCards;
-  };
-
-  const delayedFunction = async (roomId, ...functions) => {
-    for (let func of functions) {
-      await func(roomId);
-    }
-  };
-
-  //Очистка карт на столе
-  async function clearTable() {
-    return (tableCards.length = 0);
-  }
-
   // Функция для раздачи трех карт (флопа)
   async function dealFlopCards() {
     tableCards.push(deckWithoutPlayerCards.pop());
@@ -88,17 +30,21 @@ function initializeSocket(server) {
     tableCards.push(deckWithoutPlayerCards.pop());
     console.log("Выдаем карты флопа");
   }
-  // Функция для раздачи одной карты (терна,ривера)
+
+  // Функция для раздачи одной карты (терна, ривера)
   async function dealOneCard() {
     tableCards.push(deckWithoutPlayerCards.pop());
     console.log("Выдаем одну карту");
+  }
+
+  async function clearTable() {
+    tableCards.length = 0;
   }
 
   // Функция для начала раздачи карт
   async function startCardDistribution(roomId) {
     try {
       const players = await User.find({ roomId: roomId });
-
 
       const emptyCards = players.every((player) => {
         return player.cards.length === 0;
@@ -112,7 +58,7 @@ function initializeSocket(server) {
 
       const deck = await shuffleDeck();
 
-      const playerCards = await dealCards(deck, players);
+      await dealCards(deck, players, playerCards, deckWithoutPlayerCards);
 
       for (const { playerId, cards } of playerCards) {
         await User.updateOne({ _id: playerId }, { $set: { cards: cards } });
@@ -295,7 +241,7 @@ function initializeSocket(server) {
             ? maxSum
             : currentPlayer
         );
-        console.log(`maxBet ${JSON.stringify(maxBet)}`)
+        console.log(`maxBet ${JSON.stringify(maxBet)}`);
         const allSameMaxBet = turnPlayers.every(
           (player) =>
             player.flopLastBet === maxBet.flopLastBet &&
@@ -542,7 +488,6 @@ function initializeSocket(server) {
 
   // ТРИГГЕР ОБНОВЛЕНИЯ ПОЗИЦИЙ НАЧАЛА НОВОГО РАУНДА
   let updatePositionTriggerBlocker = false;
-  let findWinnerBlocker = false;
   let repeateUpdatePosBlock = false;
 
   async function updatePositionTrigger(roomId) {
@@ -622,7 +567,16 @@ function initializeSocket(server) {
     }
     repeateUpdatePosBlock = true;
     try {
-      const players = await User.find({ roomId: roomId });
+      // Получите всех игроков в комнате
+      const players = await User.find({ roomId: roomId }).sort({ position: 1 });
+
+      // Если игроков нет, ничего не делаем
+      if (players.length === 0) {
+        console.log("Нет игроков для обновления позиций.");
+        return;
+      }
+
+      // Сброс состояния всех игроков
       await User.updateMany(
         { roomId: roomId },
         {
@@ -639,30 +593,52 @@ function initializeSocket(server) {
             makeTurn: false,
             loser: false,
             cards: [],
+            currentPlayerId: false,
+            isDealer: false, // Сброс статуса дилера
           },
         }
       );
 
       console.log("Возвращаем модель к исходному состоянию");
 
-      let highPositionPlayer = players.reduce((a, b) => {
-        return a.position > b.position ? a : b;
-      }, players[0]);
+      // Фильтруем активных игроков
+      const activePlayers = players.filter((player) => !player.fold);
 
-      let updatedPositions = {};
-
-      for (let player of players) {
-        if (player.position === highPositionPlayer.position) {
-          updatedPositions[player._id] = 1;
-        } else {
-          updatedPositions[player._id] = player.position + 1;
-        }
+      if (activePlayers.length === 0) {
+        console.log("Нет активных игроков для назначения дилера.");
+        return;
       }
+
+      // Определите, кто будет дилером
+      let newDealer;
+      const currentDealer = activePlayers.find((player) => player.isDealer);
+      if (currentDealer) {
+        // Если дилер уже установлен, переместите его к следующему активному игроку
+        const currentDealerIndex = activePlayers.indexOf(currentDealer);
+        const nextDealerIndex = (currentDealerIndex + 1) % activePlayers.length;
+        newDealer = activePlayers[nextDealerIndex];
+      } else {
+        // Если дилера нет, выберите первого активного игрока
+        newDealer = activePlayers[0];
+      }
+
+      // Установите новый статус дилера
+      await User.updateOne(
+        { _id: newDealer._id },
+        { $set: { isDealer: true } }
+      );
+
+      // Обновите позиции игроков
+      let updatedPositions = {};
+      activePlayers.forEach((player, index) => {
+        updatedPositions[player._id] = index + 1;
+      });
 
       for (let [id, newPosition] of Object.entries(updatedPositions)) {
         await User.updateOne({ _id: id }, { position: newPosition });
       }
 
+      // Установите ставки для малого и большого блинда
       const sbPlayer = await User.findOneAndUpdate(
         { position: 1 },
         {
@@ -687,10 +663,7 @@ function initializeSocket(server) {
         await User.updateOne({ _id: bbPlayer._id }, { $set: { fold: true } });
       }
 
-      await User.updateMany(
-        { roomId: roomId },
-        { $set: { currentPlayerId: false } }
-      );
+      // Установите текущего игрока
       await User.updateOne(
         { position: 3, roomId: roomId },
         { $set: { currentPlayerId: true } }
@@ -708,6 +681,23 @@ function initializeSocket(server) {
       });
     } finally {
       repeateUpdatePosBlock = false;
+    }
+  }
+
+  let findWinnerBlocker = false;
+  let findWinnerBlockerTriggerBlocker = false;
+  async function giveFindWinner(roomId) {
+    if (findWinnerBlockerTriggerBlocker) {
+      return;
+    }
+    findWinnerBlockerTriggerBlocker = true;
+    try {
+    } catch (error) {
+      console.error(error);
+      io.emit("dealError", {
+        message: "Ошибка при поиске победителя",
+        error: error.message,
+      });
     }
   }
 
@@ -736,6 +726,7 @@ function initializeSocket(server) {
       }
 
       if (countFoldFalse === 1 && lastStandingPlayer) {
+        console.log("Попали в блок соло игрок");
         let totalBets = 0;
         players.forEach((player) => {
           totalBets +=
