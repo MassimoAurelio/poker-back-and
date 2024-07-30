@@ -3,6 +3,11 @@ const User = require("../models/modelUser");
 const { Hand } = require("pokersolver");
 const Room = require("../models/room");
 const { shuffleDeck, dealCards } = require("./deckUtils");
+const {
+  dealFlopCards,
+  setTableCards,
+  setDeckWithoutPlayerCards,
+} = require("./gameUtils");
 
 function initializeSocket(server) {
   const io = socketio(server, {
@@ -23,12 +28,21 @@ function initializeSocket(server) {
     updatePosition: false,
   };
 
-  // Функция для раздачи трех карт (флопа)
-  async function dealFlopCards() {
-    tableCards.push(deckWithoutPlayerCards.pop());
-    tableCards.push(deckWithoutPlayerCards.pop());
-    tableCards.push(deckWithoutPlayerCards.pop());
-    console.log("Выдаем карты флопа");
+  // Установите начальные значения для функций
+  setTableCards(tableCards);
+  setDeckWithoutPlayerCards(deckWithoutPlayerCards);
+
+  // Используйте функцию dealFlopCards
+  function handleDealFlop() {
+    dealFlopCards();
+  }
+
+  // Используйте функцию dealOneCard
+  function handleDealOneCard() {
+    const card = dealOneCard();
+    if (card) {
+      console.log("Карта выдана:", card);
+    }
   }
 
   // Функция для раздачи одной карты (терна, ривера)
@@ -152,7 +166,7 @@ function initializeSocket(server) {
       );
       const players = await User.find({ fold: false, roomId: roomId });
       await clearTable();
-      await dealFlopCards();
+      await handleDealFlop();
 
       const lastCurrentPlayer = players.find(
         (player) => player.currentPlayerId === true
@@ -275,7 +289,7 @@ function initializeSocket(server) {
     isDealingTurnCard = true;
     try {
       const players = await User.find({ roomId: roomId, fold: false });
-      await dealOneCard();
+      handleDealOneCard();
 
       const bbPlayer = await User.findOne({ position: 2 });
       await User.updateMany({}, { lastBet: 0 });
@@ -391,7 +405,7 @@ function initializeSocket(server) {
     }
     isDealingRiverCard = true;
     try {
-      await dealOneCard();
+      handleDealOneCard();
       const players = await User.find({ roomId: roomId, fold: false });
       const bbPlayer = await User.findOne({ position: 2 });
       await User.updateMany({}, { lastBet: 0 });
