@@ -2,14 +2,8 @@ let tableCards = [];
 let deckWithoutPlayerCards = [];
 
 function dealOneCard() {
-  if (deckWithoutPlayerCards.length > 0) {
-    const card = deckWithoutPlayerCards.pop();
-    console.log("Выдаем одну карту:", card);
-    return card;
-  } else {
-    console.log("Колода пуста, невозможно выдать карту.");
-    return null;
-  }
+  tableCards.push(deckWithoutPlayerCards.pop());
+  console.log("Выдаем одну карту");
 }
 
 function dealFlopCards() {
@@ -19,13 +13,18 @@ function dealFlopCards() {
   console.log("Выдаем карты флопа");
 }
 
+function clearTable() {
+  tableCards.length = 0;
+}
+
 module.exports = {
   dealOneCard,
   dealFlopCards,
+  clearTable,
   setTableCards(cards) {
     tableCards = cards;
   },
-  setDeckWithoutPlayerCards(deck) {
-    deckWithoutPlayerCards = deck;
+  setDeckCards(cards) {
+    deckWithoutPlayerCards = cards;
   },
 };

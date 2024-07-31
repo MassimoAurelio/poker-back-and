@@ -65,6 +65,10 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    winner: {
+      type: Boolean,
+      default: false,
+    },
     cards: [
       {
         value: String,
