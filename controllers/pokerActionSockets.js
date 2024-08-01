@@ -625,22 +625,16 @@ function initializeSocket(server) {
     return withBlocker("taskRunning", async () => {
       try {
         const players = await User.find({ roomId: roomId });
-
+        const activePlayers = players.filter(
+          (player) => !player.fold && player.makeTurn
+        );
         if (players.length === 0) {
           throw new Error("No players found in the room");
         }
 
-        let countFoldFalse = 0;
-        let lastStandingPlayer = null;
+        const lastWinner = activePlayers.filter((player) => !player.fold);
 
-        for (let player of players) {
-          if (player.fold === false) {
-            countFoldFalse++;
-            lastStandingPlayer = player;
-          }
-        }
-
-        if (countFoldFalse === 1 && lastStandingPlayer) {
+        if (lastWinner.length === 1) {
           let totalBets = 0;
           players.forEach((player) => {
             totalBets +=
@@ -650,25 +644,20 @@ function initializeSocket(server) {
               player.riverLastBet;
           });
 
-          lastStandingPlayer.stack += totalBets;
-          await lastStandingPlayer.save();
-          await User.updateOne(
-            { _id: lastStandingPlayer._id },
-            { $set: { winner: true } }
-          );
+          const winner = lastWinner[0];
+
+          winner.stack += totalBets;
+          await winner.save();
+          await User.updateOne({ _id: winner._id }, { $set: { winner: true } });
 
           console.log(
             `Победитель ${JSON.stringify(
-              lastStandingPlayer.name
+              winner.name
             )} после того как все скинули`
           );
 
-          return { winners: [lastStandingPlayer.name], winnerSum: totalBets };
+          return { winners: [winner.name], winnerSum: totalBets };
         }
-
-        const activePlayers = players.filter(
-          (player) => !player.fold && player.makeTurn
-        );
 
         if (activePlayers.length > 0) {
           const communityCards = tableCards;
