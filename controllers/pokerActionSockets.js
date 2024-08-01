@@ -192,7 +192,7 @@ function initializeSocket(server) {
         return currentPlayer.position < minPlayer.position
           ? currentPlayer
           : minPlayer;
-      });
+      }, players[0]);
 
       await User.updateOne(
         { _id: minPlayer._id },
@@ -354,6 +354,7 @@ function initializeSocket(server) {
 
   // ТРИГГЕР РИВЕР
   async function giveRiver(roomId) {
+    console.log("Вызов giveRiver");
     return withBlocker("operationInProgress", async () => {
       try {
         const players = await User.find({ roomId: roomId, fold: false });
@@ -390,8 +391,10 @@ function initializeSocket(server) {
 
   // ВЫДАЧА РИВЕРА
   async function dealRiver(roomId) {
+    console.log("Вызов dealRiver");
     return withBlocker("taskRunning", async () => {
       if (tableCards.length >= 5) {
+        console.log("Ривер не выдали потому что уже 5 карт есть");
         return;
       }
       try {
@@ -454,6 +457,12 @@ function initializeSocket(server) {
           await dealRiver(roomId);
         }, 0);
       }
+    });
+  }
+
+  async function callDealRiverDirectly(roomId) {
+    return withBlocker("taskRunning", async () => {
+      await dealRiver(roomId);
     });
   }
 
@@ -601,6 +610,10 @@ function initializeSocket(server) {
     return withBlocker("operationInProgress", async () => {
       const players = await fetchPlayers(roomId);
 
+      const activePlayers = players.filter((player) => !player.fold);
+
+      const allMakeTurn = activePlayers.every((player) => player.makeTurn);
+
       if (players.length > 1) {
         const activePlayers = players.filter((player) => !player.fold);
         if (activePlayers.length === 1) {
@@ -614,9 +627,25 @@ function initializeSocket(server) {
           console.log("Попали в giveWinner");
           return true;
         }
-      }
 
-      return false;
+        const allInPlayers = activePlayers.filter((player) => player.allIn);
+        const allInOrAllInCollPlayers = activePlayers.filter(
+          (player) => player.allIn || player.allInColl
+        );
+
+        const hasAllInWithOpponent = allInPlayers.some((player) =>
+          allInOrAllInCollPlayers.some((opponent) => opponent !== player)
+        );
+
+        if (
+          hasAllInWithOpponent &&
+          allInOrAllInCollPlayers.length > 0 &&
+          allMakeTurn
+        ) {
+          console.log("giveWinner ALL-IN");
+          return true;
+        }
+      }
     });
   }
 
@@ -628,10 +657,12 @@ function initializeSocket(server) {
         const activePlayers = players.filter(
           (player) => !player.fold && player.makeTurn
         );
+
         if (players.length === 0) {
           throw new Error("No players found in the room");
         }
 
+        // Определяем победителя если все скинули
         const lastWinner = activePlayers.filter((player) => !player.fold);
 
         if (lastWinner.length === 1) {
@@ -645,7 +676,6 @@ function initializeSocket(server) {
           });
 
           const winner = lastWinner[0];
-
           winner.stack += totalBets;
           await winner.save();
           await User.updateOne({ _id: winner._id }, { $set: { winner: true } });
@@ -659,7 +689,25 @@ function initializeSocket(server) {
           return { winners: [winner.name], winnerSum: totalBets };
         }
 
-        if (activePlayers.length > 0) {
+        // Проверяем есть ли игроки, которые пошли в allIn
+        const allInPlayers = activePlayers.filter((player) => player.allIn);
+
+        if (allInPlayers.length > 0) {
+          if (tableCards.length === 0) {
+            await dealFlopCard(roomId);
+            dealOneCard();
+            io.emit("dealTurn", { flop: { tableCards } });
+            dealOneCard();
+            io.emit("dealRiver", { flop: { tableCards } });
+          }
+          if (tableCards.length === 3) {
+            await dealTurnCard(roomId);
+            await dealRiver(roomId);
+          }
+          if (tableCards.length === 4) {
+            await dealRiver(roomId);
+          }
+
           const communityCards = tableCards;
           const hands = activePlayers.map((player) => {
             const playerCards = player.cards.map(
@@ -716,13 +764,72 @@ function initializeSocket(server) {
               { $set: { loser: true } }
             );
 
-            console.log(`Победа после вскрытия карты оказались самые сильные`);
+            console.log(`Победа allIN`);
 
             return { winners, winnerSum: potSize };
-          } else {
-            console.log("Нет победителей");
-            return { winners: [], winnerSum: 0 };
           }
+        }
+
+        // Определение победителя после вскрытия карт
+        if (activePlayers.length > 0) {
+          const communityCards = tableCards;
+          const hands = activePlayers.map((player) => {
+            const playerCards = player.cards.map(
+              (card) => `${card.value}${card.suit}`
+            );
+            const allCards = [
+              ...playerCards,
+              ...communityCards.map((card) => `${card.value}${card.suit}`),
+            ];
+            return {
+              player: player.name,
+              hand: Hand.solve(allCards),
+              totalBet:
+                player.preFlopLastBet +
+                player.flopLastBet +
+                player.turnLastBet +
+                player.riverLastBet,
+            };
+          });
+
+          const winningHand = Hand.winners(hands.map((h) => h.hand));
+
+          let totalBets = 0;
+          players.forEach((player) => {
+            totalBets +=
+              player.preFlopLastBet +
+              player.flopLastBet +
+              player.turnLastBet +
+              player.riverLastBet;
+          });
+
+          const winners = hands
+            .filter((h) => winningHand.includes(h.hand))
+            .map((h) => h.player);
+
+          const potSize = totalBets;
+          const winningsPerWinner = potSize / winners.length;
+
+          for (const winner of winners) {
+            const winnerPlayer = await User.findOne({ name: winner });
+            if (winnerPlayer) {
+              winnerPlayer.stack += winningsPerWinner;
+              await User.updateOne(
+                { _id: winnerPlayer._id },
+                { $set: { winner: true } }
+              );
+              await winnerPlayer.save();
+            }
+          }
+
+          await User.updateMany(
+            { stack: { $lte: 0 } },
+            { $set: { loser: true } }
+          );
+
+          console.log(`Победа после вскрытия карты оказались самые сильные`);
+
+          return { winners, winnerSum: potSize };
         }
       } catch (error) {
         console.error(`Ошибка при определении победителя: ${error}`);
