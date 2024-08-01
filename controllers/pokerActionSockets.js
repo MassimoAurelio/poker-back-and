@@ -362,7 +362,6 @@ function initializeSocket(server) {
         );
 
         if (turnPlayers.length === 0) {
-          console.log("No turn players found.");
           return false;
         }
 
@@ -380,7 +379,6 @@ function initializeSocket(server) {
           console.log(`ВЫЗЫВАЕМ giveRiver в позиции ${JSON.stringify(true)}`);
           return true;
         } else {
-          console.log("Not all players have the same max bet.");
           return false;
         }
       } catch (error) {
@@ -449,10 +447,6 @@ function initializeSocket(server) {
 
   // Обработка выдачи Ривера
   async function handleGiveRiver(roomId) {
-    if (blockers.processing) {
-      console.log("Processing already in progress. Exiting handleGiveRiver.");
-      return;
-    }
     return withBlocker("processing", async () => {
       const shouldDealRiver = await giveRiver(roomId);
       if (shouldDealRiver) {
@@ -629,22 +623,118 @@ function initializeSocket(server) {
   // ОПРЕДЕЛЯЕМ ПОБЕДИТЕЛЯ
   async function findWinner(roomId) {
     return withBlocker("taskRunning", async () => {
-      const players = await fetchPlayers(roomId);
+      try {
+        const players = await User.find({ roomId: roomId });
 
-      if (players.length === 0) return;
-
-      const soloWinner = players.filter((player) => !player.fold);
-
-      if (soloWinner.length === 1) {
-        const winner = soloWinner[0];
-        try {
-          await User.updateOne({ _id: winner._id }, { $set: { winner: true } });
-          console.log(
-            `Победитель определен, им стал ${JSON.stringify(winner.name)}`
-          );
-        } catch (error) {
-          console.error(`Ошибка при обновлении победителя: ${error}`);
+        if (players.length === 0) {
+          throw new Error("No players found in the room");
         }
+
+        let countFoldFalse = 0;
+        let lastStandingPlayer = null;
+
+        for (let player of players) {
+          if (player.fold === false) {
+            countFoldFalse++;
+            lastStandingPlayer = player;
+          }
+        }
+
+        if (countFoldFalse === 1 && lastStandingPlayer) {
+          let totalBets = 0;
+          players.forEach((player) => {
+            totalBets +=
+              player.preFlopLastBet +
+              player.flopLastBet +
+              player.turnLastBet +
+              player.riverLastBet;
+          });
+
+          lastStandingPlayer.stack += totalBets;
+          await lastStandingPlayer.save();
+          await User.updateOne(
+            { _id: lastStandingPlayer._id },
+            { $set: { winner: true } }
+          );
+
+          console.log(`Попали в блок соло игрок`);
+
+          return { winners: [lastStandingPlayer.name], winnerSum: totalBets };
+        }
+
+        const activePlayers = players.filter(
+          (player) => !player.fold && player.makeTurn
+        );
+
+        if (activePlayers.length > 0) {
+          const communityCards = tableCards;
+          const hands = activePlayers.map((player) => {
+            const playerCards = player.cards.map(
+              (card) => `${card.value}${card.suit}`
+            );
+            const allCards = [
+              ...playerCards,
+              ...communityCards.map((card) => `${card.value}${card.suit}`),
+            ];
+            return {
+              player: player.name,
+              hand: Hand.solve(allCards),
+              totalBet:
+                player.preFlopLastBet +
+                player.flopLastBet +
+                player.turnLastBet +
+                player.riverLastBet,
+            };
+          });
+
+          const winningHand = Hand.winners(hands.map((h) => h.hand));
+
+          let totalBets = 0;
+          players.forEach((player) => {
+            totalBets +=
+              player.preFlopLastBet +
+              player.flopLastBet +
+              player.turnLastBet +
+              player.riverLastBet;
+          });
+
+          const winners = hands
+            .filter((h) => winningHand.includes(h.hand))
+            .map((h) => h.player);
+
+          if (winners.length > 0) {
+            const potSize = totalBets;
+            const winningsPerWinner = potSize / winners.length;
+
+            // Обновляем данные победителей
+            for (const winner of winners) {
+              const winnerPlayer = await User.findOne({ name: winner });
+              if (winnerPlayer) {
+                winnerPlayer.stack += winningsPerWinner;
+                await User.updateOne(
+                  { _id: winnerPlayer._id },
+                  { $set: { winner: true } }
+                );
+                await winnerPlayer.save();
+              }
+            }
+
+            console.log("После вскрытия");
+
+            await User.updateMany(
+              { stack: { $lte: 0 } },
+              { $set: { loser: true } }
+            );
+
+            return { winners, winnerSum: potSize };
+          } else {
+            console.log("Нет победителей");
+
+            return { winners: [], winnerSum: 0 };
+          }
+        }
+      } catch (error) {
+        console.error(`Ошибка при определении победителя: ${error}`);
       }
     });
   }
