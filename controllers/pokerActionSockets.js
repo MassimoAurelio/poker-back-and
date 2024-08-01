@@ -657,7 +657,11 @@ function initializeSocket(server) {
             { $set: { winner: true } }
           );
 
-          console.log(`Попали в блок соло игрок`);
+          console.log(
+            `Победитель ${JSON.stringify(
+              lastStandingPlayer.name
+            )} после того как все скинули`
+          );
 
           return { winners: [lastStandingPlayer.name], winnerSum: totalBets };
         }
@@ -706,7 +710,6 @@ function initializeSocket(server) {
             const potSize = totalBets;
             const winningsPerWinner = potSize / winners.length;
 
-            // Обновляем данные победителей
             for (const winner of winners) {
               const winnerPlayer = await User.findOne({ name: winner });
               if (winnerPlayer) {
@@ -719,17 +722,16 @@ function initializeSocket(server) {
               }
             }
 
-            console.log("После вскрытия");
-
             await User.updateMany(
               { stack: { $lte: 0 } },
               { $set: { loser: true } }
             );
 
+            console.log(`Победа после вскрытия карты оказались самые сильные`);
+
             return { winners, winnerSum: potSize };
           } else {
             console.log("Нет победителей");
-
             return { winners: [], winnerSum: 0 };
           }
         }
