@@ -1,16 +1,16 @@
 const socketio = require("socket.io");
 const User = require("../models/modelUser");
 const { Hand } = require("pokersolver");
-const Room = require("../models/room");
-const { shuffleDeck, dealCards } = require("./deckUtils");
-const { withBlocker } = require("./blockers");
+const Room = require("../models/modelRoom");
+const { shuffleDeck, dealCards } = require("../utils/deckUtils");
+const { withBlocker } = require("../utils/blockers");
 const {
   dealFlopCards,
   dealOneCard,
   clearTable,
   setTableCards,
   setDeckCards,
-} = require("./gameUtils");
+} = require("../utils/gameUtils");
 
 function initializeSocket(server) {
   const io = socketio(server, {
@@ -230,131 +230,118 @@ function initializeSocket(server) {
     }
   }
 
-  let isTrueTurnCard = false;
-  let isDealingTurnCard = false;
   //ТРИГГЕР ТЕРНА
   async function giveTurn(roomId) {
-    if (isTrueTurnCard) {
-      return;
-    }
-    isTrueTurnCard = true;
-    try {
-      const players = await User.find({ roomId: roomId, fold: false });
-      const turnPlayers = players.filter(
-        (player) => player.fold === false && player.roundStage === "flop"
-      );
-      const allMakeTurn = players.every((player) => player.makeTurn === true);
-
-      if (!allMakeTurn) {
-        return false;
-      }
-
-      if (turnPlayers.length > 0) {
-        const maxBet = turnPlayers.reduce((maxSum, currentPlayer) =>
-          maxSum.flopLastBet > currentPlayer.flopLastBet
-            ? maxSum
-            : currentPlayer
+    return withBlocker("operationInProgress", async () => {
+      try {
+        const players = await User.find({ roomId: roomId, fold: false });
+        const turnPlayers = players.filter(
+          (player) => player.fold === false && player.roundStage === "flop"
         );
-        console.log(`maxBet ${JSON.stringify(maxBet)}`);
-        const allSameMaxBet = turnPlayers.every(
-          (player) =>
-            player.flopLastBet === maxBet.flopLastBet &&
-            player.makeTurn === true
-        );
-        if (allSameMaxBet) {
-          console.log(
-            `ВЫЗЫВАЕМ giveTurn в позиции ${JSON.stringify(isTrueTurnCard)}`
+        const allMakeTurn = players.every((player) => player.makeTurn === true);
+
+        if (!allMakeTurn) {
+          return false;
+        }
+
+        if (turnPlayers.length > 0) {
+          const maxBet = turnPlayers.reduce((maxSum, currentPlayer) =>
+            maxSum.flopLastBet > currentPlayer.flopLastBet
+              ? maxSum
+              : currentPlayer
           );
-          if (!isDealingTurnCard) {
+          console.log(`maxBet ${JSON.stringify(maxBet)}`);
+          const allSameMaxBet = turnPlayers.every(
+            (player) =>
+              player.flopLastBet === maxBet.flopLastBet &&
+              player.makeTurn === true
+          );
+          if (allSameMaxBet) {
+            console.log(
+              `ВЫЗЫВАЕМ giveTurn в позиции ${JSON.stringify(isTrueTurnCard)}`
+            );
+
             return true;
           }
+          return false;
         }
-        return false;
+      } catch (error) {
+        console.error("Error in giveTurn event:", error);
       }
-    } catch (error) {
-      console.error("Error in giveTurn event:", error);
-    } finally {
-      isTrueTurnCard = false;
-    }
+    });
   }
+
   //ВЫДАЧА ТЕРНА
   async function dealTurnCard(roomId) {
-    if (tableCards.length >= 4) {
-      return;
-    }
+    return withBlocker("taskRunning", async () => {
+      try {
+        const players = await User.find({ roomId: roomId, fold: false });
+        handleDealOneCard();
 
-    if (isDealingTurnCard) {
-      return;
-    }
-    isDealingTurnCard = true;
-    try {
-      const players = await User.find({ roomId: roomId, fold: false });
-      handleDealOneCard();
+        const bbPlayer = await User.findOne({ position: 2 });
+        await User.updateMany({}, { lastBet: 0 });
 
-      const bbPlayer = await User.findOne({ position: 2 });
-      await User.updateMany({}, { lastBet: 0 });
+        if (!bbPlayer) {
+          return io.emit("dealError", {
+            message: `Игрок на большом блаинде не найден`,
+          });
+        }
 
-      if (!bbPlayer) {
-        return io.emit("dealError", {
-          message: `Игрок на большом блаинде не найден`,
+        const minPlayer = players.reduce((minPlayer, currentPlayer) => {
+          return currentPlayer.position < minPlayer.position
+            ? currentPlayer
+            : minPlayer;
+        });
+
+        const lastCurrentPlayer = players.find(
+          (player) => player.currentPlayerId === true
+        );
+
+        if (lastCurrentPlayer) {
+          await User.updateOne(
+            { _id: lastCurrentPlayer._id },
+            { $set: { currentPlayerId: false } }
+          );
+        }
+
+        await User.updateOne(
+          { _id: minPlayer._id },
+          { $set: { currentPlayerId: true } }
+        );
+        await User.updateMany(
+          {},
+          { $set: { makeTurn: false, roundStage: "turn" } }
+        );
+
+        console.log(`TURN: ${JSON.stringify(tableCards)}`);
+        io.emit("dealTurn", { flop: { tableCards } });
+      } catch (error) {
+        console.error("Error in dealTurn event:", error);
+        io.emit("dealError", {
+          message: "Ошибка при выдаче терна",
+          error: error.message,
         });
       }
-
-      const minPlayer = players.reduce((minPlayer, currentPlayer) => {
-        return currentPlayer.position < minPlayer.position
-          ? currentPlayer
-          : minPlayer;
-      });
-
-      const lastCurrentPlayer = players.find(
-        (player) => player.currentPlayerId === true
-      );
-
-      if (lastCurrentPlayer) {
-        await User.updateOne(
-          { _id: lastCurrentPlayer._id },
-          { $set: { currentPlayerId: false } }
-        );
-      }
-
-      await User.updateOne(
-        { _id: minPlayer._id },
-        { $set: { currentPlayerId: true } }
-      );
-      await User.updateMany(
-        {},
-        { $set: { makeTurn: false, roundStage: "turn" } }
-      );
-
-      console.log(`TURN: ${JSON.stringify(tableCards)}`);
-      io.emit("dealTurn", { flop: { tableCards } });
-    } catch (error) {
-      console.error("Error in dealTurn event:", error);
-      io.emit("dealError", {
-        message: "Ошибка при выдаче терна",
-        error: error.message,
-      });
-    } finally {
-      isDealingTurnCard = false;
-    }
+    });
   }
 
   async function handleGiveTurn(roomId) {
-    const shouldDealTurn = await giveTurn(roomId);
-    if (shouldDealTurn) {
-      const delayedFunction = async () => {
-        await dealTurnCard(roomId);
-      };
+    return withBlocker("processing", async () => {
+      const shouldDealTurn = await giveTurn(roomId);
+      if (shouldDealTurn) {
+        const delayedFunction = async () => {
+          await dealTurnCard(roomId);
+        };
 
-      setTimeout(async () => {
-        await delayedFunction();
-      }, 1000);
-    }
+        setTimeout(async () => {
+          await delayedFunction();
+        }, 1000);
+      }
+    });
   }
 
   // ТРИГГЕР РИВЕР
   async function giveRiver(roomId) {
-    console.log("Вызов giveRiver");
     return withBlocker("operationInProgress", async () => {
       try {
         const players = await User.find({ roomId: roomId, fold: false });
@@ -457,12 +444,6 @@ function initializeSocket(server) {
           await dealRiver(roomId);
         }, 0);
       }
-    });
-  }
-
-  async function callDealRiverDirectly(roomId) {
-    return withBlocker("taskRunning", async () => {
-      await dealRiver(roomId);
     });
   }
 

@@ -1,7 +1,7 @@
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const RegUser = require("../models/regUser");
-const Room = require("../models/room");
+const Room = require("../models/modelRoom");
 
 exports.register = async (req, res) => {
   try {

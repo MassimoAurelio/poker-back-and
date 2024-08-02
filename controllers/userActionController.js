@@ -1,5 +1,5 @@
 const User = require("../models/modelUser");
-const Room = require("../models/room");
+const Room = require("../models/modelRoom");
 
 //Информация о столе
 exports.getPlayers = async (req, res) => {
