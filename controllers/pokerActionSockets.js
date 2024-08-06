@@ -250,17 +250,12 @@ function initializeSocket(server) {
               ? maxSum
               : currentPlayer
           );
-          console.log(`maxBet ${JSON.stringify(maxBet)}`);
           const allSameMaxBet = turnPlayers.every(
             (player) =>
               player.flopLastBet === maxBet.flopLastBet &&
               player.makeTurn === true
           );
           if (allSameMaxBet) {
-            console.log(
-              `ВЫЗЫВАЕМ giveTurn в позиции ${JSON.stringify(isTrueTurnCard)}`
-            );
-
             return true;
           }
           return false;
@@ -587,11 +582,21 @@ function initializeSocket(server) {
     });
   }
 
+  //ТРИГГЕР ПОИСКА ПОБЕДИТЕЛЯ
   async function giveWinner(roomId) {
     return withBlocker("operationInProgress", async () => {
       const players = await fetchPlayers(roomId);
 
       const activePlayers = players.filter((player) => !player.fold);
+      if (activePlayers.length === 1) {
+        if (activePlayers[0].position === 2) {
+          await User.updateOne(
+            { _id: activePlayers[0]._id },
+            { $set: { makeTurn: true } }
+          );
+        }
+        return true;
+      }
 
       const allMakeTurn = activePlayers.every((player) => player.makeTurn);
 
@@ -630,7 +635,7 @@ function initializeSocket(server) {
     });
   }
 
-  // ОПРЕДЕЛЯЕМ ПОБЕДИТЕЛЯ
+  //ОПРЕДЕЛЯЕМ ПОБЕДИТЕЛЯ
   async function findWinner(roomId) {
     return withBlocker("taskRunning", async () => {
       try {
