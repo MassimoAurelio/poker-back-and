@@ -671,7 +671,10 @@ function initializeSocket(server) {
     return withBlocker("taskRunning", async () => {
       try {
         const players = await User.find({ roomId: roomId });
-        const activePlayers = players.filter((player) => !player.fold);
+        //makeTurn не удалять
+        const activePlayers = players.filter(
+          (player) => !player.fold && player.makeTurn
+        );
 
         if (players.length === 0) {
           throw new Error("No players found in the room");
