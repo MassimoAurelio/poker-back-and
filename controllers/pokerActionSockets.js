@@ -243,7 +243,8 @@ function initializeSocket(server) {
       const turnPlayers = players.filter(
         (player) => player.fold === false && player.roundStage === "flop"
       );
-      const allMakeTurn = players.every((player) => player.makeTurn === true);
+      const activePlayers = players.filter((player) => !player.fold);
+      const allMakeTurn = activePlayers.every((player) => player.makeTurn);
 
       if (!allMakeTurn) {
         return false;
@@ -363,7 +364,7 @@ function initializeSocket(server) {
 
         // Проверяем количество активных игроков
         if (activePlayers.length > 1) {
-          const turnPlayers = players.filter(
+          const turnPlayers = activePlayers.filter(
             (player) => !player.fold && player.roundStage === "turn"
           );
 
@@ -400,7 +401,6 @@ function initializeSocket(server) {
 
   // ВЫДАЧА РИВЕРА
   async function dealRiver(roomId) {
-    console.log("Вызов dealRiver");
     return withBlocker("taskRunning", async () => {
       if (tableCards.length >= 5) {
         console.log("Ривер не выдали потому что уже 5 карт есть");
@@ -408,8 +408,8 @@ function initializeSocket(server) {
       }
 
       try {
-        const players = await User.find({ roomId: roomId, fold: false });
-        const activePlayers = players.find((player) => !player.fold);
+        const players = await User.find({ roomId: roomId });
+        const activePlayers = players.filter((player) => !player.fold);
         if (activePlayers.length > 1) {
           handleDealOneCard();
           const bbPlayer = await User.findOne({ position: 2 });
@@ -637,7 +637,7 @@ function initializeSocket(server) {
           return true;
         }
 
-        const allMadeTurn = players.every(
+        const allMadeTurn = activePlayers.every(
           (player) => player.makeTurn && player.roundStage === "river"
         );
         if (allMadeTurn) {
@@ -671,9 +671,7 @@ function initializeSocket(server) {
     return withBlocker("taskRunning", async () => {
       try {
         const players = await User.find({ roomId: roomId });
-        const activePlayers = players.filter(
-          (player) => !player.fold && player.makeTurn
-        );
+        const activePlayers = players.filter((player) => !player.fold);
 
         if (players.length === 0) {
           throw new Error("No players found in the room");
