@@ -214,7 +214,6 @@ function initializeSocket(server) {
       console.error("Error in dealFlopCard event:", error);
     } finally {
       isDealingFlopCard = false;
-      console.log(`Сбрасываем isDealingFlopCard в finally блоке`);
     }
   }
 
@@ -521,7 +520,8 @@ function initializeSocket(server) {
   async function updatePos(roomId) {
     return withBlocker("taskRunning", async () => {
       try {
-        const players = await User.find({ roomId: roomId }).sort({
+        // Находим всех игроков, сортированных по позиции
+        const players = await User.find({ roomId: roomId, loser: false }).sort({
           position: 1,
         });
 
@@ -530,18 +530,16 @@ function initializeSocket(server) {
           return;
         }
 
-        setTimeout(() => {});
+        // Обновляем позиции игроков
         for (let i = 0; i < players.length; i++) {
-          let newPosition = players[i].position + 1;
-          if (newPosition > players.length) {
-            newPosition = 1;
-          }
+          let newPosition = i + 1; // Устанавливаем новую позицию, начиная с 1
           await User.updateOne(
             { _id: players[i]._id },
             { $set: { position: newPosition } }
           );
         }
 
+        // Сбрасываем состояния всех игроков
         await User.updateMany(
           { roomId: roomId },
           {
@@ -565,23 +563,29 @@ function initializeSocket(server) {
           }
         );
 
+        // Пересчитываем позиции заново после сброса
         const updatedPlayers = await User.find({ roomId: roomId }).sort({
           position: 1,
         });
 
+        // Устанавливаем нового дилера (последний игрок в массиве)
         const newDealerIndex = updatedPlayers.length - 1;
         await User.updateOne(
           { roomId: roomId, _id: updatedPlayers[newDealerIndex]._id },
           { $set: { isDealer: true } }
         );
 
-        await User.updateMany(
-          { position: 3, roomId: roomId },
-          { $set: { currentPlayerId: true } }
+        // Обновляем позиции small blind и big blind
+        await User.updateOne(
+          { position: 1, roomId: roomId },
+          {
+            $inc: { stack: -25 },
+            $set: { lastBet: 25, preFlopLastBet: 25, currentPlayerId: true },
+          }
         );
 
         const sbPlayer = await User.findOneAndUpdate(
-          { position: 1 },
+          { position: 1, roomId: roomId },
           {
             $inc: { stack: -25 },
             $set: { lastBet: 25, preFlopLastBet: 25 },
@@ -593,7 +597,7 @@ function initializeSocket(server) {
         }
 
         const bbPlayer = await User.findOneAndUpdate(
-          { position: 2 },
+          { position: 2, roomId: roomId },
           {
             $inc: { stack: -50 },
             $set: { lastBet: 50, preFlopLastBet: 50 },
@@ -603,6 +607,8 @@ function initializeSocket(server) {
         if (bbPlayer && bbPlayer.stack < 0) {
           await User.updateOne({ _id: bbPlayer._id }, { $set: { fold: true } });
         }
+
+        // Запуск раздачи карт и других необходимых действий
         handleClearTable();
         await startCardDistribution(roomId);
         io.emit("updatePositions", "Позиции игроков успешно обновлены.");

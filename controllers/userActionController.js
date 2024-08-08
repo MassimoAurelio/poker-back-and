@@ -1,5 +1,6 @@
 const User = require("../models/modelUser");
 const Room = require("../models/modelRoom");
+const _ = require("lodash");
 
 //Информация о столе
 exports.getPlayers = async (req, res) => {
@@ -28,7 +29,6 @@ exports.leave = async (req, res) => {
     await Room.updateOne({ _id: roomId }, { $pull: { users: user._id } });
 
     await User.findOneAndDelete({ _id: user._id });
-
     res.status(200).send(`Игрок ${player} покинул стол в комнате ${roomId}.`);
   } catch (error) {
     res
@@ -47,17 +47,17 @@ exports.raise = async (req, res) => {
     const lastBigBet = players.reduce((minBet, currentLastBet) => {
       return currentLastBet.lastBet > minBet.lastBet ? currentLastBet : minBet;
     });
-    //минимальный рейз lastBet+bb
+
     const minRaise = lastBigBet.lastBet + bB;
-    //если сумма рейза меньше минимальный рейз выходить из функции
+
     if (raiseAmount < minRaise) {
       return;
     }
-    //если игрок не найден возвращаем ошибку
+
     if (!player) {
       return res.status(404).json(`Игрок ${name} не найден`);
     }
-    //если стак игрока меньше суммы рейза возвращаем ошибку
+
     if (raiseAmount)
       if (player.stack + player.lastBet < raiseAmount) {
         return res
@@ -76,19 +76,12 @@ exports.raise = async (req, res) => {
     const currentRoundStage = player.roundStage;
     switch (currentRoundStage) {
       case "preflop":
-        // Вычитает уже поставленные блайнды из суммы raiseAmount и сохраняет результат в preFlopLastBet
         updateData.$inc.preFlopLastBet = raiseAmount - additionalStack;
-
-        // Если игрок на позиции малого блайнда (position === 1), возвращает ему поставленный малый блайнд (25)
         if (player.position === 1) {
           updateData.$inc.stack = (updateData.$inc.stack || 0) + 25;
-        }
-        // Если игрок на позиции большого блайнда (position === 2), возвращает ему поставленный большой блайнд (50)
-        else if (player.position === 2) {
+        } else if (player.position === 2) {
           updateData.$inc.stack = (updateData.$inc.stack || 0) + 50;
         }
-
-        // Устанавливает значение последней ставки игрока в raiseAmount
         updateData.$set.lastBet = raiseAmount;
         break;
       case "flop":
