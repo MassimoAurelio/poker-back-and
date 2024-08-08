@@ -86,15 +86,15 @@ exports.raise = async (req, res) => {
         break;
       case "flop":
         updateData.$inc.flopLastBet = raiseAmount;
-        updateData.$set.lastBet = (player.flopLastBet || 0) + raiseAmount;
+        updateData.$set.lastBet = raiseAmount;
         break;
       case "turn":
         updateData.$inc.turnLastBet = raiseAmount;
-        updateData.$set.lastBet = (player.turnLastBet || 0) + raiseAmount;
+        updateData.$set.lastBet = raiseAmount;
         break;
       case "river":
         updateData.$inc.riverLastBet = raiseAmount;
-        updateData.$set.lastBet = (player.riverLastBet || 0) + raiseAmount;
+        updateData.$set.lastBet = raiseAmount;
         break;
       default:
         return res.status(400).json({ message: "Неизвестная стадия игры" });

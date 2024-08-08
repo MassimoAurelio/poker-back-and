@@ -255,7 +255,6 @@ function initializeSocket(server) {
             ? maxSum
             : currentPlayer
         );
-        console.log(`maxBet ${JSON.stringify(maxBet)}`);
         const allSameMaxBet = turnPlayers.every(
           (player) =>
             player.flopLastBet === maxBet.flopLastBet &&
@@ -520,7 +519,7 @@ function initializeSocket(server) {
   async function updatePos(roomId) {
     return withBlocker("taskRunning", async () => {
       try {
-        // Находим всех игроков, сортированных по позиции
+        // Находим всех игроков
         const players = await User.find({ roomId: roomId, loser: false }).sort({
           position: 1,
         });
@@ -530,12 +529,11 @@ function initializeSocket(server) {
           return;
         }
 
-        // Обновляем позиции игроков
+        // Обновляем позиции
         for (let i = 0; i < players.length; i++) {
-          let newPosition = i + 1; // Устанавливаем новую позицию, начиная с 1
           await User.updateOne(
             { _id: players[i]._id },
-            { $set: { position: newPosition } }
+            { $set: { position: i + 1 } }
           );
         }
 
@@ -546,7 +544,6 @@ function initializeSocket(server) {
             $set: {
               lastBet: 0,
               preFlopLastBet: 0,
-              currentPlayerId: false,
               flopLastBet: 0,
               turnLastBet: 0,
               riverLastBet: 0,
@@ -563,32 +560,22 @@ function initializeSocket(server) {
           }
         );
 
-        // Пересчитываем позиции заново после сброса
+        // Пересчитываем позиции и устанавливаем нового дилера
         const updatedPlayers = await User.find({ roomId: roomId }).sort({
           position: 1,
         });
-
-        // Устанавливаем нового дилера (последний игрок в массиве)
         const newDealerIndex = updatedPlayers.length - 1;
         await User.updateOne(
-          { roomId: roomId, _id: updatedPlayers[newDealerIndex]._id },
+          { _id: updatedPlayers[newDealerIndex]._id },
           { $set: { isDealer: true } }
         );
 
-        // Обновляем позиции small blind и big blind
-        await User.updateOne(
-          { position: 1, roomId: roomId },
-          {
-            $inc: { stack: -25 },
-            $set: { lastBet: 25, preFlopLastBet: 25, currentPlayerId: true },
-          }
-        );
-
+        // Устанавливаем small blind и big blind
         const sbPlayer = await User.findOneAndUpdate(
           { position: 1, roomId: roomId },
           {
             $inc: { stack: -25 },
-            $set: { lastBet: 25, preFlopLastBet: 25 },
+            $set: { lastBet: 25, preFlopLastBet: 25, currentPlayerId: true },
           },
           { new: true }
         );
@@ -598,17 +585,14 @@ function initializeSocket(server) {
 
         const bbPlayer = await User.findOneAndUpdate(
           { position: 2, roomId: roomId },
-          {
-            $inc: { stack: -50 },
-            $set: { lastBet: 50, preFlopLastBet: 50 },
-          },
+          { $inc: { stack: -50 }, $set: { lastBet: 50, preFlopLastBet: 50 } },
           { new: true }
         );
         if (bbPlayer && bbPlayer.stack < 0) {
           await User.updateOne({ _id: bbPlayer._id }, { $set: { fold: true } });
         }
 
-        // Запуск раздачи карт и других необходимых действий
+        // Запуск раздачи карт и очистка стола
         handleClearTable();
         await startCardDistribution(roomId);
         io.emit("updatePositions", "Позиции игроков успешно обновлены.");
@@ -726,21 +710,38 @@ function initializeSocket(server) {
           }
           if (tableCards.length === 3) {
             await dealTurnCard(roomId);
+            io.emit("dealTurn", { flop: { tableCards } });
             await dealRiver(roomId);
+            io.emit("dealRiver", { flop: { tableCards } });
           }
           if (tableCards.length === 4) {
             await dealRiver(roomId);
+            io.emit("dealRiver", { flop: { tableCards } });
           }
 
           const communityCards = tableCards;
           const hands = activePlayers.map((player) => {
-            const playerCards = player.cards.map(
-              (card) => `${card.value}${card.suit}`
-            );
+            const playerCards = player.cards.map((card) => {
+              if (card && card.value && card.suit) {
+                return `${card.value}${card.suit}`;
+              } else {
+                console.error("Некорректная карта игрока:", card);
+                return "";
+              }
+            });
+
             const allCards = [
               ...playerCards,
-              ...communityCards.map((card) => `${card.value}${card.suit}`),
+              ...communityCards.map((card) => {
+                if (card && card.value && card.suit) {
+                  return `${card.value}${card.suit}`;
+                } else {
+                  console.error("Некорректная общая карта:", card);
+                  return "";
+                }
+              }),
             ];
+
             return {
               player: player.name,
               hand: Hand.solve(allCards),
