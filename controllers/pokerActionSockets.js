@@ -475,6 +475,7 @@ function initializeSocket(server) {
   async function startNewRound(roomId) {
     return withBlocker("taskRunning", async () => {
       try {
+        const players = await User.find({ roomId: roomId });
         await User.updateMany(
           { roomId: roomId },
           {
@@ -487,6 +488,17 @@ function initializeSocket(server) {
               makeTurn: false,
               cards: [],
             },
+          }
+        );
+
+        const highPosition = players.reduce((a, b) => {
+          return a.position > b.position ? a : b;
+        });
+
+        await User.updateOne(
+          { roomId: roomId, _id: highPosition._id },
+          {
+            $set: { isDealer: true },
           }
         );
         console.log("Начинаем новый раунд");
@@ -520,22 +532,22 @@ function initializeSocket(server) {
     return withBlocker("taskRunning", async () => {
       try {
         // Находим всех игроков
-        const players = await User.find({ roomId: roomId, loser: false }).sort({
-          position: 1,
-        });
+        const players = await User.find({
+          roomId: roomId,
+          loser: false,
+        }).sort({ position: 1 });
 
         if (players.length === 0) {
           console.log("Нет игроков для обновления позиций.");
           return;
         }
 
-        // Обновляем позиции
-        for (let i = 0; i < players.length; i++) {
-          await User.updateOne(
-            { _id: players[i]._id },
-            { $set: { position: i + 1 } }
-          );
-        }
+        const currentDealer = players.find((player) => player.isDealer);
+
+        // Найти игрока перед текущим дилером
+        const playerBeforeDealer = players.find(
+          (player) => player.position === currentDealer.position - 1
+        );
 
         // Сбрасываем состояния всех игроков
         await User.updateMany(
@@ -560,14 +572,53 @@ function initializeSocket(server) {
           }
         );
 
-        // Пересчитываем позиции и устанавливаем нового дилера
-        const updatedPlayers = await User.find({ roomId: roomId }).sort({
-          position: 1,
-        });
-        const newDealerIndex = updatedPlayers.length - 1;
+        // Назначить нового дилера
         await User.updateOne(
-          { _id: updatedPlayers[newDealerIndex]._id },
-          { $set: { isDealer: true } }
+          { roomId: roomId, _id: playerBeforeDealer._id },
+          {
+            $set: { isDealer: true },
+          }
+        );
+
+        // Получить обновленную информацию о новом дилере
+        const updatedPlayerBeforeDealer = await User.findOne({
+          roomId: roomId,
+          _id: playerBeforeDealer._id,
+        });
+
+        // Теперь распределяем позиции
+        await User.updateOne(
+          { roomId: roomId, _id: currentDealer._id },
+          {
+            $set: { position: 1 },
+          }
+        );
+
+        await User.updateOne(
+          {
+            roomId: roomId,
+            _id: players.find(
+              (player) =>
+                player.position === 1 && player._id !== currentDealer._id
+            )._id,
+          },
+          {
+            $set: { position: 2 },
+          }
+        );
+        const highPosition = players.length;
+        await User.updateOne(
+          { roomId: roomId, _id: updatedPlayerBeforeDealer._id },
+          {
+            $set: { position: highPosition },
+          }
+        );
+
+        await User.findOneAndUpdate(
+          { roomId: roomId, position: 3 },
+          {
+            $set: { currentPlayerId: true },
+          }
         );
 
         // Устанавливаем small blind и big blind
@@ -575,7 +626,7 @@ function initializeSocket(server) {
           { position: 1, roomId: roomId },
           {
             $inc: { stack: -25 },
-            $set: { lastBet: 25, preFlopLastBet: 25, currentPlayerId: true },
+            $set: { lastBet: 25, preFlopLastBet: 25 },
           },
           { new: true }
         );
@@ -597,6 +648,7 @@ function initializeSocket(server) {
         await startCardDistribution(roomId);
         io.emit("updatePositions", "Позиции игроков успешно обновлены.");
         io.emit("clearTableCards");
+        console.log("ОБНОВЛЯЕМ ПОЗИЦИИ");
       } catch (error) {
         console.error(`Ошибка при обновлении позиции: ${error}`);
       }
@@ -852,7 +904,8 @@ function initializeSocket(server) {
             { $set: { loser: true } }
           );
 
-          console.log(`Победа после вскрытия карты оказались самые сильные`);
+          console.log(`Победа пос
+            ле вскрытия карты оказались самые сильные`);
 
           return { winners, winnerSum: potSize };
         }
@@ -948,7 +1001,7 @@ function initializeSocket(server) {
         if (position === 3) {
           await User.updateMany(
             { position: 3, roomId: roomId },
-            { $set: { currentPlayerId: true, isDealer: true } }
+            { $set: { currentPlayerId: true } }
           );
         }
 
