@@ -542,13 +542,23 @@ function initializeSocket(server) {
           return;
         }
 
-        const currentDealer = players.find((player) => player.isDealer);
+        for (let i = 0; i < players.length; i++) {
+          let newPosition = players[i].position + 1;
+          if (newPosition > players.length) {
+            newPosition = 1;
+          }
+          await User.updateOne(
+            { roomId: roomId, _id: players[i]._id },
+            { $set: { position: newPosition } }
+          );
+        }
+        /* const currentDealer = players.find((player) => player.isDealer);
 
         // Найти игрока перед текущим дилером
         const playerBeforeDealer = players.find(
           (player) => player.position === currentDealer.position - 1
         );
-
+ */
         // Сбрасываем состояния всех игроков
         await User.updateMany(
           { roomId: roomId },
@@ -571,6 +581,28 @@ function initializeSocket(server) {
             },
           }
         );
+        /* 
+        //Находим текущего диллера
+        const currentDealer = players.find((player) => player.isDealer);
+
+        // Найти игрока перед текущим дилером (кто будет следующим диллером)
+        const playerBeforeDealer = players.find(
+          (player) => player.position === currentDealer.position - 1
+        );
+
+        // Снять старого дилера
+        await User.updateOne(
+          { roomId: roomId, _id: currentDealer._id },
+          {
+            $set: { isDealer: false },
+          }
+        );
+
+        //Получаем обновленную информацию о старом дилере
+        const updateCurrentDealer = await User.findOne({
+          roomId: roomId,
+          _id: currentDealer._id,
+        });
 
         // Назначить нового дилера
         await User.updateOne(
@@ -586,41 +618,9 @@ function initializeSocket(server) {
           _id: playerBeforeDealer._id,
         });
 
-        // Теперь распределяем позиции
-        await User.updateOne(
-          { roomId: roomId, _id: currentDealer._id },
-          {
-            $set: { position: 1 },
-          }
-        );
-
-        await User.updateOne(
-          {
-            roomId: roomId,
-            _id: players.find(
-              (player) =>
-                player.position === 1 && player._id !== currentDealer._id
-            )._id,
-          },
-          {
-            $set: { position: 2 },
-          }
-        );
-        const highPosition = players.length;
-        await User.updateOne(
-          { roomId: roomId, _id: updatedPlayerBeforeDealer._id },
-          {
-            $set: { position: highPosition },
-          }
-        );
-
-        await User.findOneAndUpdate(
-          { roomId: roomId, position: 3 },
-          {
-            $set: { currentPlayerId: true },
-          }
-        );
-
+        const newSort = players.splice(updatedPlayerBeforeDealer).sort();
+        console.log(`newSort: ${JSON.stringify(newSort)}`);
+ */
         // Устанавливаем small blind и big blind
         const sbPlayer = await User.findOneAndUpdate(
           { position: 1, roomId: roomId },
