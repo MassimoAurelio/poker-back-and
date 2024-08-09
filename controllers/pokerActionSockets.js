@@ -11,6 +11,7 @@ const {
   setTableCards,
   setDeckCards,
 } = require("../utils/gameUtils");
+const { leave } = require("../controllers/userActionController");
 
 function initializeSocket(server) {
   const io = socketio(server, {
@@ -537,6 +538,8 @@ function initializeSocket(server) {
           loser: false,
         }).sort({ position: 1 });
 
+        const findLoser = await User.find({ roomId: roomId, loser: true });
+
         if (players.length === 0) {
           console.log("Нет игроков для обновления позиций.");
           return;
@@ -552,13 +555,7 @@ function initializeSocket(server) {
             { $set: { position: newPosition } }
           );
         }
-        /* const currentDealer = players.find((player) => player.isDealer);
 
-        // Найти игрока перед текущим дилером
-        const playerBeforeDealer = players.find(
-          (player) => player.position === currentDealer.position - 1
-        );
- */
         // Сбрасываем состояния всех игроков
         await User.updateMany(
           { roomId: roomId },
@@ -581,46 +578,7 @@ function initializeSocket(server) {
             },
           }
         );
-        /* 
-        //Находим текущего диллера
-        const currentDealer = players.find((player) => player.isDealer);
 
-        // Найти игрока перед текущим дилером (кто будет следующим диллером)
-        const playerBeforeDealer = players.find(
-          (player) => player.position === currentDealer.position - 1
-        );
-
-        // Снять старого дилера
-        await User.updateOne(
-          { roomId: roomId, _id: currentDealer._id },
-          {
-            $set: { isDealer: false },
-          }
-        );
-
-        //Получаем обновленную информацию о старом дилере
-        const updateCurrentDealer = await User.findOne({
-          roomId: roomId,
-          _id: currentDealer._id,
-        });
-
-        // Назначить нового дилера
-        await User.updateOne(
-          { roomId: roomId, _id: playerBeforeDealer._id },
-          {
-            $set: { isDealer: true },
-          }
-        );
-
-        // Получить обновленную информацию о новом дилере
-        const updatedPlayerBeforeDealer = await User.findOne({
-          roomId: roomId,
-          _id: playerBeforeDealer._id,
-        });
-
-        const newSort = players.splice(updatedPlayerBeforeDealer).sort();
-        console.log(`newSort: ${JSON.stringify(newSort)}`);
- */
         // Устанавливаем small blind и big blind
         const sbPlayer = await User.findOneAndUpdate(
           { position: 1, roomId: roomId },
@@ -648,6 +606,7 @@ function initializeSocket(server) {
         await startCardDistribution(roomId);
         io.emit("updatePositions", "Позиции игроков успешно обновлены.");
         io.emit("clearTableCards");
+
         console.log("ОБНОВЛЯЕМ ПОЗИЦИИ");
       } catch (error) {
         console.error(`Ошибка при обновлении позиции: ${error}`);
@@ -1033,6 +992,26 @@ function initializeSocket(server) {
         );
       } catch (error) {
         socket.emit("joinError", { message: error.message });
+      }
+    });
+    socket.on("leave", async (data) => {
+      const { player, roomId } = data;
+      try {
+        const user = await User.findOne({ name: player, roomId: roomId });
+        if (!user) {
+          socket.emit("userNoFound", { message: "User not found" });
+          return;
+        }
+
+        await Room.updateOne({ _id: roomId }, { $pull: { users: user._id } });
+
+        await User.findOneAndDelete({ _id: user._id });
+        socket.emit(
+          "leaveSuccess",
+          `Игрок ${player} покинул комнату ${roomId}.`
+        );
+      } catch (error) {
+        socket.emit("leaveError", { message: error.message });
       }
     });
 

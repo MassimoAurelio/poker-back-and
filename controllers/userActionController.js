@@ -15,7 +15,7 @@ exports.getPlayers = async (req, res) => {
   }
 };
 
-// Встать из стола
+/* // Встать из стола
 exports.leave = async (req, res) => {
   const { player, roomId } = req.body;
   try {
@@ -35,7 +35,7 @@ exports.leave = async (req, res) => {
       .status(500)
       .json({ message: "Ошибка при удалении игрока", error: error.message });
   }
-};
+}; */
 
 // Поднимаем ставку
 exports.raise = async (req, res) => {
@@ -317,3 +317,4 @@ exports.nextTurnPlayer = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+

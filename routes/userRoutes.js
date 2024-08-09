@@ -5,7 +5,7 @@ const authController = require("../controllers/authController");
 router.get("/players", userController.getPlayers);
 router.post("/register", authController.register);
 router.post("/login", authController.login);
-router.post("/leave", userController.leave);
+
 router.post("/nextplayer", userController.nextTurnPlayer);
 router.post("/raise", userController.raise);
 router.post("/check", userController.check);
