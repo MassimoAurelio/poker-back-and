@@ -11,7 +11,6 @@ const {
   setTableCards,
   setDeckCards,
 } = require("../utils/gameUtils");
-const { leave } = require("../controllers/userActionController");
 
 function initializeSocket(server) {
   const io = socketio(server, {
@@ -474,41 +473,66 @@ function initializeSocket(server) {
 
   //НАЧАЛО НОВОГО РАУНДА
   async function startNewRound(roomId) {
-    return withBlocker("taskRunning", async () => {
-      try {
-        const players = await User.find({ roomId: roomId });
-        await User.updateMany(
-          { roomId: roomId },
-          {
-            $set: {
-              flopLastBet: 0,
-              turnLastBet: 0,
-              riverLastBet: 0,
-              fold: false,
-              roundStage: "preflop",
-              makeTurn: false,
-              cards: [],
-            },
-          }
-        );
+    /* return withBlocker("taskRunning", async () => { */
+    try {
+      const players = await User.find({ roomId: roomId });
 
-        const highPosition = players.reduce((a, b) => {
-          return a.position > b.position ? a : b;
-        });
+      const highPosition = players.reduce((a, b) => {
+        return a.position > b.position ? a : b;
+      });
 
-        await User.updateOne(
-          { roomId: roomId, _id: highPosition._id },
-          {
-            $set: { isDealer: true },
-          }
-        );
-        console.log("Начинаем новый раунд");
-        handleClearTable();
-        io.emit("startNewRound", "Начинаем новый раунд");
-      } catch (error) {
-        console.error(error);
+      // Сбрасываем состояния всех игроков
+      await User.updateMany(
+        { roomId: roomId },
+        {
+          $set: {
+            loser: false,
+          },
+        }
+      );
+
+      /* await User.updateOne(
+        { roomId: roomId, _id: highPosition._id },
+        {
+          $set: { isDealer: true },
+        }
+      );
+ */
+      await User.updateMany(
+        { position: 3, roomId: roomId },
+        { $set: { currentPlayerId: true } }
+      );
+
+      // Устанавливаем small blind и big blind
+      const sbPlayer = await User.findOneAndUpdate(
+        { position: 1, roomId: roomId },
+        {
+          $inc: { stack: -25 },
+          $set: { lastBet: 25, preFlopLastBet: 25 },
+        },
+        { new: true }
+      );
+      if (sbPlayer && sbPlayer.stack < 0) {
+        await User.updateOne({ _id: sbPlayer._id }, { $set: { fold: true } });
       }
-    });
+
+      const bbPlayer = await User.findOneAndUpdate(
+        { position: 2, roomId: roomId },
+        { $inc: { stack: -50 }, $set: { lastBet: 50, preFlopLastBet: 50 } },
+        { new: true }
+      );
+      if (bbPlayer && bbPlayer.stack < 0) {
+        await User.updateOne({ _id: bbPlayer._id }, { $set: { fold: true } });
+      }
+      console.log("START NEW ROUND");
+      handleClearTable();
+      io.emit("clearTableCards");
+      await startCardDistribution(roomId);
+      io.emit("startNewRound", "Начинаем новый раунд");
+    } catch (error) {
+      console.error(error);
+    }
+    /*  }); */
   }
 
   // ТРИГГЕР ОБНОВЛЕНИЯ ПОЗИЦИЙ НАЧАЛА НОВОГО РАУНДА
@@ -533,27 +557,15 @@ function initializeSocket(server) {
     return withBlocker("taskRunning", async () => {
       try {
         // Находим всех игроков
-        const players = await User.find({
+        let players = await User.find({
           roomId: roomId,
-          loser: false,
         }).sort({ position: 1 });
 
-        const findLoser = await User.find({ roomId: roomId, loser: true });
+        console.log(JSON.stringify(players));
 
         if (players.length === 0) {
           console.log("Нет игроков для обновления позиций.");
           return;
-        }
-
-        for (let i = 0; i < players.length; i++) {
-          let newPosition = players[i].position + 1;
-          if (newPosition > players.length) {
-            newPosition = 1;
-          }
-          await User.updateOne(
-            { roomId: roomId, _id: players[i]._id },
-            { $set: { position: newPosition } }
-          );
         }
 
         // Сбрасываем состояния всех игроков
@@ -567,46 +579,99 @@ function initializeSocket(server) {
               turnLastBet: 0,
               riverLastBet: 0,
               fold: false,
+              makeTurn: false,
+              cards: [],
               roundStage: "preflop",
               allIn: null,
               allInColl: null,
-              makeTurn: false,
-              loser: false,
-              cards: [],
               winner: false,
               isDealer: false,
             },
           }
         );
 
-        // Устанавливаем small blind и big blind
-        const sbPlayer = await User.findOneAndUpdate(
-          { position: 1, roomId: roomId },
-          {
-            $inc: { stack: -25 },
-            $set: { lastBet: 25, preFlopLastBet: 25 },
-          },
-          { new: true }
+        const firstPositionPlayer = players.find(
+          (player) => player.position === 1
         );
-        if (sbPlayer && sbPlayer.stack < 0) {
-          await User.updateOne({ _id: sbPlayer._id }, { $set: { fold: true } });
+
+        if (firstPositionPlayer.stack > 0) {
+          await User.findOneAndUpdate(
+            {
+              roomId: roomId,
+              _id: firstPositionPlayer._id,
+            },
+            {
+              $set: { isDealer: true },
+            }
+          );
+          console.log(
+            `НАВЕШИВАЕМ isDealer на первого юзера ${JSON.stringify(
+              firstPositionPlayer.name
+            )}`
+          );
         }
 
-        const bbPlayer = await User.findOneAndUpdate(
-          { position: 2, roomId: roomId },
-          { $inc: { stack: -50 }, $set: { lastBet: 50, preFlopLastBet: 50 } },
-          { new: true }
-        );
-        if (bbPlayer && bbPlayer.stack < 0) {
-          await User.updateOne({ _id: bbPlayer._id }, { $set: { fold: true } });
+        if (!firstPositionPlayer) {
+          const nextActivePlayer = players.find(
+            (player) =>
+              player.position === firstPositionPlayer.position + 1 &&
+              player.stack > 0
+          );
+
+          if (!nextActivePlayer) {
+            console.log("nextActivePlayer позиции не нашли");
+            return;
+          }
+          await User.findOneAndUpdate(
+            {
+              roomId: roomId,
+              _id: nextActivePlayer._id,
+            },
+            { $set: { isDealer: true } }
+          );
+          console.log(
+            `НАВЕШИВАЕМ isDealer на второго юзера ${JSON.stringify(
+              nextActivePlayer.name
+            )}`
+          );
         }
 
-        // Запуск раздачи карт и очистка стола
-        handleClearTable();
-        await startCardDistribution(roomId);
-        io.emit("updatePositions", "Позиции игроков успешно обновлены.");
-        io.emit("clearTableCards");
+        players = await User.find({
+          roomId: roomId,
+          loser: false,
+        }).sort({ position: 1 });
 
+        console.log(
+          `players НАЧАЛИСЬ ${JSON.stringify(players)}  players ЗАКОНЧИЛИСЬ`
+        );
+
+        if (!players) {
+          console.log("players не найдены");
+          return;
+        }
+
+        let sortPlayers = players.sort((a, b) => {
+          if (a.isDealer && !b.isDealer) return 1;
+          if (!a.isDealer && b.isDealer) return -1;
+          return 0;
+        });
+
+        if (!sortPlayers) {
+          console.log("sortPlayers не найдены");
+          return;
+        }
+
+        console.log(`НАЧАЛИСЬ ${JSON.stringify(sortPlayers)} ЗАКОНЧИЛИСЬ`);
+
+        for (let i = 0; i < sortPlayers.length; i++) {
+          const item = sortPlayers[i];
+          await User.findOneAndUpdate(
+            { roomId: roomId, _id: item._id },
+            { $set: { position: i + 1 } }
+          );
+        }
+
+        await startNewRound(roomId);
         console.log("ОБНОВЛЯЕМ ПОЗИЦИИ");
       } catch (error) {
         console.error(`Ошибка при обновлении позиции: ${error}`);
@@ -957,13 +1022,6 @@ function initializeSocket(server) {
           { $addToSet: { users: newPlayer._id } }
         );
 
-        if (position === 3) {
-          await User.updateMany(
-            { position: 3, roomId: roomId },
-            { $set: { currentPlayerId: true } }
-          );
-        }
-
         if (!roomStates[roomId]) {
           roomStates[roomId] = { playerCount: 0 };
         }
@@ -974,18 +1032,6 @@ function initializeSocket(server) {
           await startCardDistribution(roomId);
         }
 
-        if (position === 1 || position === 2) {
-          await User.updateOne(
-            { _id: newPlayer._id },
-            {
-              $inc: { stack: -(25 * position) },
-              $set: {
-                preFlopLastBet: 25 * position,
-                lastBet: 25 * position,
-              },
-            }
-          );
-        }
         socket.emit(
           "joinSuccess",
           `Игрок ${player} присоединился к столу на позицию ${position}.`

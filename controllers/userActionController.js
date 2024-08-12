@@ -15,27 +15,6 @@ exports.getPlayers = async (req, res) => {
   }
 };
 
-/* // Встать из стола
-exports.leave = async (req, res) => {
-  const { player, roomId } = req.body;
-  try {
-    const user = await User.findOne({ name: player, roomId: roomId });
-    if (!user) {
-      return res
-        .status(404)
-        .json(`Игрок ${player} не найден в комнате ${roomId}.`);
-    }
-
-    await Room.updateOne({ _id: roomId }, { $pull: { users: user._id } });
-
-    await User.findOneAndDelete({ _id: user._id });
-    res.status(200).send(`Игрок ${player} покинул стол в комнате ${roomId}.`);
-  } catch (error) {
-    res
-      .status(500)
-      .json({ message: "Ошибка при удалении игрока", error: error.message });
-  }
-}; */
 
 // Поднимаем ставку
 exports.raise = async (req, res) => {
