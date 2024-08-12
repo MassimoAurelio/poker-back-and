@@ -556,19 +556,13 @@ function initializeSocket(server) {
   async function updatePos(roomId) {
     return withBlocker("taskRunning", async () => {
       try {
-        // Находим всех игроков
-        let players = await User.find({
-          roomId: roomId,
-        }).sort({ position: 1 });
-
-        console.log(JSON.stringify(players));
+        let players = await User.find({ roomId: roomId }).sort({ position: 1 });
 
         if (players.length === 0) {
           console.log("Нет игроков для обновления позиций.");
           return;
         }
 
-        // Сбрасываем состояния всех игроков
         await User.updateMany(
           { roomId: roomId },
           {
@@ -594,56 +588,36 @@ function initializeSocket(server) {
           (player) => player.position === 1
         );
 
-        if (firstPositionPlayer.stack > 0) {
+        if (firstPositionPlayer && firstPositionPlayer.stack > 0) {
           await User.findOneAndUpdate(
-            {
-              roomId: roomId,
-              _id: firstPositionPlayer._id,
-            },
-            {
-              $set: { isDealer: true },
-            }
+            { roomId: roomId, _id: firstPositionPlayer._id },
+            { $set: { isDealer: true } }
           );
           console.log(
-            `НАВЕШИВАЕМ isDealer на первого юзера ${JSON.stringify(
-              firstPositionPlayer.name
-            )}`
+            `НАВЕШИВАЕМ isDealer на первого юзера ${firstPositionPlayer.name}`
           );
-        }
-
-        if (!firstPositionPlayer) {
+        } else {
           const nextActivePlayer = players.find(
-            (player) =>
-              player.position === firstPositionPlayer.position + 1 &&
-              player.stack > 0
+            (player) => player.position > 1 && player.stack > 0
           );
 
           if (!nextActivePlayer) {
             console.log("nextActivePlayer позиции не нашли");
             return;
           }
+
           await User.findOneAndUpdate(
-            {
-              roomId: roomId,
-              _id: nextActivePlayer._id,
-            },
+            { roomId: roomId, _id: nextActivePlayer._id },
             { $set: { isDealer: true } }
           );
           console.log(
-            `НАВЕШИВАЕМ isDealer на второго юзера ${JSON.stringify(
-              nextActivePlayer.name
-            )}`
+            `НАВЕШИВАЕМ isDealer на второго юзера ${nextActivePlayer.name}`
           );
         }
 
-        players = await User.find({
-          roomId: roomId,
-          loser: false,
-        }).sort({ position: 1 });
-
-        console.log(
-          `players НАЧАЛИСЬ ${JSON.stringify(players)}  players ЗАКОНЧИЛИСЬ`
-        );
+        players = await User.find({ roomId: roomId, loser: false }).sort({
+          position: 1,
+        });
 
         if (!players) {
           console.log("players не найдены");
@@ -660,8 +634,6 @@ function initializeSocket(server) {
           console.log("sortPlayers не найдены");
           return;
         }
-
-        console.log(`НАЧАЛИСЬ ${JSON.stringify(sortPlayers)} ЗАКОНЧИЛИСЬ`);
 
         for (let i = 0; i < sortPlayers.length; i++) {
           const item = sortPlayers[i];
