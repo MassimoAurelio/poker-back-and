@@ -11,6 +11,7 @@ const {
   setTableCards,
   setDeckCards,
 } = require("../utils/gameUtils");
+const Timer = require("../utils/Timer");
 
 function initializeSocket(server) {
   const io = socketio(server, {
@@ -473,14 +474,7 @@ function initializeSocket(server) {
 
   //НАЧАЛО НОВОГО РАУНДА
   async function startNewRound(roomId) {
-    /* return withBlocker("taskRunning", async () => { */
     try {
-      const players = await User.find({ roomId: roomId });
-
-      const highPosition = players.reduce((a, b) => {
-        return a.position > b.position ? a : b;
-      });
-
       // Сбрасываем состояния всех игроков
       await User.updateMany(
         { roomId: roomId },
@@ -491,19 +485,11 @@ function initializeSocket(server) {
         }
       );
 
-      /* await User.updateOne(
-        { roomId: roomId, _id: highPosition._id },
-        {
-          $set: { isDealer: true },
-        }
-      );
- */
       await User.updateMany(
         { position: 3, roomId: roomId },
         { $set: { currentPlayerId: true } }
       );
 
-      // Устанавливаем small blind и big blind
       const sbPlayer = await User.findOneAndUpdate(
         { position: 1, roomId: roomId },
         {
@@ -527,12 +513,12 @@ function initializeSocket(server) {
       console.log("START NEW ROUND");
       handleClearTable();
       io.emit("clearTableCards");
+
       await startCardDistribution(roomId);
       io.emit("startNewRound", "Начинаем новый раунд");
     } catch (error) {
       console.error(error);
     }
-    /*  }); */
   }
 
   // ТРИГГЕР ОБНОВЛЕНИЯ ПОЗИЦИЙ НАЧАЛА НОВОГО РАУНДА
@@ -593,9 +579,6 @@ function initializeSocket(server) {
             { roomId: roomId, _id: firstPositionPlayer._id },
             { $set: { isDealer: true } }
           );
-          console.log(
-            `НАВЕШИВАЕМ isDealer на первого юзера ${firstPositionPlayer.name}`
-          );
         } else {
           const nextActivePlayer = players.find(
             (player) => player.position > 1 && player.stack > 0
@@ -609,9 +592,6 @@ function initializeSocket(server) {
           await User.findOneAndUpdate(
             { roomId: roomId, _id: nextActivePlayer._id },
             { $set: { isDealer: true } }
-          );
-          console.log(
-            `НАВЕШИВАЕМ isDealer на второго юзера ${nextActivePlayer.name}`
           );
         }
 
@@ -995,13 +975,26 @@ function initializeSocket(server) {
         );
 
         if (!roomStates[roomId]) {
-          roomStates[roomId] = { playerCount: 0 };
+          roomStates[roomId] = {
+            playerCount: 0,
+            roundTimer: null,
+          };
         }
+
         roomStates[roomId].playerCount++;
 
-        if (roomStates[roomId].playerCount === 3) {
-          await startNewRound(roomId);
-          await startCardDistribution(roomId);
+        // Очистка предыдущего таймера, если он существует
+        if (roomStates[roomId].roundTimer) {
+          clearTimeout(roomStates[roomId].roundTimer);
+        }
+
+        // Запуск таймера, если количество игроков больше 1
+        if (roomStates[roomId].playerCount > 1) {
+          roomStates[roomId].roundTimer = setTimeout(async () => {
+            if (roomStates[roomId].playerCount >= 2) {
+              await startNewRound(roomId);
+            }
+          }, 5000); // 5 секундный таймер
         }
 
         socket.emit(
@@ -1012,6 +1005,7 @@ function initializeSocket(server) {
         socket.emit("joinError", { message: error.message });
       }
     });
+
     socket.on("leave", async (data) => {
       const { player, roomId } = data;
       try {
