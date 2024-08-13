@@ -11,7 +11,6 @@ const {
   setTableCards,
   setDeckCards,
 } = require("../utils/gameUtils");
-const Timer = require("../utils/Timer");
 
 function initializeSocket(server) {
   const io = socketio(server, {
@@ -513,7 +512,6 @@ function initializeSocket(server) {
       console.log("START NEW ROUND");
       handleClearTable();
       io.emit("clearTableCards");
-
       await startCardDistribution(roomId);
       io.emit("startNewRound", "Начинаем новый раунд");
     } catch (error) {
@@ -880,8 +878,7 @@ function initializeSocket(server) {
             { $set: { loser: true } }
           );
 
-          console.log(`Победа пос
-            ле вскрытия карты оказались самые сильные`);
+          console.log(`Победа после вскрытия карты оказались самые сильные`);
 
           return { winners, winnerSum: potSize };
         }
@@ -994,7 +991,7 @@ function initializeSocket(server) {
             if (roomStates[roomId].playerCount >= 2) {
               await startNewRound(roomId);
             }
-          }, 5000); // 5 секундный таймер
+          }, 2000); // 5 секундный таймер
         }
 
         socket.emit(

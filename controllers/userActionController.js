@@ -15,7 +15,6 @@ exports.getPlayers = async (req, res) => {
   }
 };
 
-
 // Поднимаем ставку
 exports.raise = async (req, res) => {
   try {
@@ -136,7 +135,7 @@ exports.check = async (req, res) => {
     const lastBigBetUser = await User.findOne({}).sort({ lastBet: -1 });
 
     if (lastBigBetUser.lastBet !== player.lastBet) {
-      return res.status(404).json({ message: `Невозможно сделать чек` });
+      return;
     }
 
     res.status(200).json({ message: `Игрок ${player.name} сделал чек` });
@@ -296,4 +295,3 @@ exports.nextTurnPlayer = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
-
